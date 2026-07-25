@@ -19,6 +19,13 @@ export interface EvaluationResult {
   policiesEvaluated: number;
   nonce: bigint;
   txValueUsd: bigint;
+  aiAnalysis: {
+    chatId: string;
+    provider: string;
+    verified: boolean;
+    riskScore: number;
+    reasoning: string;
+  } | null;
 }
 
 export interface ProcessedNonces {
@@ -68,6 +75,7 @@ export async function runEvaluation(
   let highestScore = 0;
   let selectedPolicy: any = null;
   let selectedChecks = 0;
+  let selectedAiAnalysis: EvaluationResult["aiAnalysis"] = null;
   let countMatched = 0;
 
   for (const policy of policies) {
@@ -92,6 +100,7 @@ export async function runEvaluation(
       highestScore = score;
       selectedPolicy = typedPolicy;
       selectedChecks = checks.bitmap;
+      selectedAiAnalysis = checks.aiAnalysis ?? null;
     }
   }
 
@@ -116,5 +125,6 @@ export async function runEvaluation(
     policiesEvaluated: countMatched,
     nonce: request.nonce,
     txValueUsd,
+    aiAnalysis: selectedAiAnalysis,
   };
 }

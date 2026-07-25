@@ -83,6 +83,13 @@ export interface SimulationResult {
   scores: number[];
   weights: number[];
   executed: boolean[];
+  aiAnalysis?: {
+    chatId: string;
+    provider: string;
+    verified: boolean;
+    riskScore: number;
+    reasoning: string;
+  } | null;
 }
 
 export interface StateReport {

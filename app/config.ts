@@ -22,6 +22,7 @@ export const COINGECKO_API_URL =
 
 export const EVALUATION_GATEWAY_ADDR = process.env.EVALUATION_GATEWAY_ADDR || "";
 export const EVALUATOR_PRIVATE_KEY = process.env.EVALUATOR_PRIVATE_KEY || "";
+export const ZG_COMPUTE_PROVIDER = process.env.ZG_COMPUTE_PROVIDER || "";
 
 // ponytail: legacy port for the old TEE decrypt path (unused by evaluator, kept for compat)
 export const SIGN_PORT = parseInt(process.env.SIGN_PORT || "6661", 10);

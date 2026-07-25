@@ -10,6 +10,7 @@ import { checkContractVerified } from "./checks/verification.js";
 import { checkErc7730Registry } from "./checks/erc7730.js";
 import { checkBytecode } from "./checks/bytecode.js";
 import { checkContractAge, checkTxVolume } from "./checks/contract_age.js";
+import { checkAiAnalysis } from "./checks/ai_analysis.js";
 
 export async function runSimulation(
   request: EvaluateRequest,
@@ -116,6 +117,11 @@ export async function runSimulation(
     return [pass, score] as [boolean, number];
   }, true);
   addResult(9, p9, s9, 0.07, e9);
+
+  // CHECK 10: AI calldata/intent analysis via 0G Compute (weight 0.15)
+  const [p10, s10, e10, aiMeta] = await checkAiAnalysis(request);
+  addResult(10, p10, s10, 0.15, e10);
+  result.aiAnalysis = aiMeta;
 
   return result;
 }
