@@ -1,11 +1,7 @@
-# Sign extension stack for Coston2.
+# 0G Galileo evaluator stack.
 #
 # Copy .env.example to .env and fill in the values before running.
-# Copy config/proxy/extension_proxy.toml.example to
-#   config/proxy/extension_proxy.toml and fill in DB credentials.
-#
-# Usage:
-#   docker compose up -d
+# Usage: docker compose up -d
 
 services:
   redis:
@@ -21,40 +17,17 @@ services:
       timeout: 3s
       retries: 5
 
-  ext-proxy:
+  evaluator:
     build:
-      context: proxy/
-      dockerfile: Dockerfile
-    volumes:
-      - ./config/proxy/extension_proxy.toml:/app/config/config.toml:ro
-    environment:
-      - PRIVATE_KEY=${PRIVATE_KEY:?Set PRIVATE_KEY in .env}
-    ports:
-      - "${EXT_PROXY_INTERNAL_BIND:-0.0.0.0:6675}:6663"
-      - "${EXT_PROXY_EXTERNAL_BIND:-0.0.0.0:6676}:6664"
-    depends_on:
-      redis:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:6663/healthy"]
-      interval: 5s
-      timeout: 5s
-      retries: 30
-      start_period: 10s
-
-  extension-tee:
-    build:
-      context: ${LANGUAGE:-go}/
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: Dockerfile.evaluator
     env_file:
       - .env
     environment:
-      - INITIAL_OWNER=${INITIAL_OWNER:?Set INITIAL_OWNER in .env}
-      - EXTENSION_ID=${EXTENSION_ID:?Set EXTENSION_ID in .env}
-      - PROXY_URL=http://ext-proxy:6663
-      - SIGN_PORT=8882
-      - EXTENSION_PORT=8883
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - NODE_ENV=production
     depends_on:
-      ext-proxy:
+      redis:
         condition: service_healthy
+    ports:
+      - "${EVALUATOR_BIND:-127.0.0.1:3001}:3001"
+    restart: unless-stopped

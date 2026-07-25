@@ -1,70 +1,25 @@
-import { FLARE_CONTRACT_REGISTRY, FLR_USD_FEED_ID, FLARE_RPC_URL } from "../config.js";
-import { createPublicClient, http, decodeFunctionResult, encodeFunctionData } from "viem";
-import { defineChain } from "viem";
-
-const flareCoston2 = defineChain({
-  id: 114,
-  name: "Flare Coston2",
-  nativeCurrency: { name: "C2FLR", symbol: "C2FLR", decimals: 18 },
-  rpcUrls: { default: { http: [FLARE_RPC_URL] } },
-});
-
-const client = createPublicClient({
-  chain: flareCoston2,
-  transport: http(FLARE_RPC_URL),
-});
-
-const REGISTRY_ABI = [
-  {
-    name: "getContractAddressByName",
-    type: "function",
-    stateMutability: "view",
-    inputs: [{ name: "name", type: "string" }],
-    outputs: [{ name: "", type: "address" }],
-  },
-] as const;
-
-const FTSO_ABI = [
-  {
-    name: "getFeedByIdInWei",
-    type: "function",
-    stateMutability: "view",
-    inputs: [{ name: "feedId", type: "bytes21" }],
-    outputs: [
-      { name: "value", type: "uint256" },
-      { name: "timestamp", type: "uint64" },
-    ],
-  },
-] as const;
+import { COINGECKO_API_URL } from "../config.js";
 
 let cachedPrice: bigint | null = null;
 let cachedTimestamp: number = 0;
+const CACHE_TTL = 30;
 
-export async function fetchFtsoPrice(): Promise<bigint> {
-  if (cachedPrice !== null && Date.now() / 1000 - cachedTimestamp < 30) {
+/// Fetch 0G/USD price from CoinGecko. Returns price in 1e18 wei.
+/// Fail-open: throws on API error so caller can handle.
+export async function fetchNativePrice(): Promise<bigint> {
+  if (cachedPrice !== null && Date.now() / 1000 - cachedTimestamp < CACHE_TTL) {
     return cachedPrice;
   }
 
-  const ftsoV2Addr = await client.readContract({
-    address: FLARE_CONTRACT_REGISTRY as `0x${string}`,
-    abi: REGISTRY_ABI,
-    functionName: "getContractAddressByName",
-    args: ["TestFtsoV2"],
-  });
+  const resp = await fetch(
+    `${COINGECKO_API_URL}/simple/price?ids=zero-g&vs_currencies=usd`,
+    { signal: AbortSignal.timeout(5000) }
+  );
+  const data = await resp.json();
+  const priceUsd = data["zero-g"]?.usd;
+  if (!priceUsd) throw new Error("CoinGecko: no zero-g price");
 
-  const [priceWei, timestamp] = await client.readContract({
-    address: ftsoV2Addr,
-    abi: FTSO_ABI,
-    functionName: "getFeedByIdInWei",
-    args: [FLR_USD_FEED_ID as `0x${string}`],
-  });
-
-  const now = Math.floor(Date.now() / 1000);
-  if (now - Number(timestamp) > 60) {
-    throw new Error("FTSO price is stale");
-  }
-
-  cachedPrice = priceWei;
-  cachedTimestamp = now;
-  return priceWei;
+  cachedPrice = BigInt(Math.floor(priceUsd * 1e18));
+  cachedTimestamp = Math.floor(Date.now() / 1000);
+  return cachedPrice;
 }

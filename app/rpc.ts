@@ -1,16 +1,16 @@
 import { createPublicClient, http } from "viem";
 import { defineChain } from "viem";
-import { FLARE_RPC_URL, POLICY_REGISTRY_ADDR } from "./config.js";
+import { ZG_RPC_URL, ZG_CHAIN_ID, POLICY_REGISTRY_ADDR } from "./config.js";
 
-const flareCoston2 = defineChain({
-  id: 114,
-  name: "Flare Coston2",
-  nativeCurrency: { name: "C2FLR", symbol: "C2FLR", decimals: 18 },
+const zgGalileo = defineChain({
+  id: ZG_CHAIN_ID,
+  name: "0G Galileo Testnet",
+  nativeCurrency: { name: "0G", symbol: "0G", decimals: 18 },
   rpcUrls: {
-    default: { http: [FLARE_RPC_URL] },
+    default: { http: [ZG_RPC_URL] },
   },
   blockExplorers: {
-    default: { name: "Coston2 Explorer", url: "https://coston2-explorer.flare.network" },
+    default: { name: "0G Chainscan Galileo", url: "https://chainscan-galileo.0g.ai" },
   },
 });
 
@@ -63,8 +63,8 @@ const POLICY_REGISTRY_ABI = [
 ] as const;
 
 const client = createPublicClient({
-  chain: flareCoston2,
-  transport: http(FLARE_RPC_URL),
+  chain: zgGalileo,
+  transport: http(ZG_RPC_URL),
 });
 
 export async function fetchActivePolicies(): Promise<any[]> {
@@ -98,4 +98,4 @@ export async function getTransactionCount(address: `0x${string}`): Promise<numbe
   return nonce;
 }
 
-export { client, flareCoston2 };
+export { client, zgGalileo };

@@ -40,14 +40,18 @@ Baseline tag: `flare-baseline-2025-07-25` (35 Solidity tests, 37 TS tests passin
 - [ ] abi.ts: EvaluationGateway ABI, update wallet ABI
 
 ## Phase 2 — Evaluator service (replace TEE)
-- [ ] evaluator/ directory: index, config, decrypt, submit
-- [ ] Strip Flare routing from base/server.ts
-- [ ] oracle.ts → CoinGecko (merged with Phase 5)
-- [ ] rpc.ts → Galileo chain
-- [ ] verification.ts → chainscan-galileo API
-- [ ] Frontend encryption.ts: evaluator pubkey from env
-- [ ] docker-compose.yml: redis + evaluator
-- [ ] Frontend TestTransactionsPage: submit via EvaluationGateway
+- [x] evaluator/ directory: index, config, decrypt, pipeline, submit
+- [x] app/rpc.ts → Galileo chain (zgGalileo)
+- [x] app/config.ts → 0G constants
+- [x] oracle.ts → CoinGecko (fetchNativePrice)
+- [x] verification.ts → chainscan-galileo API
+- [x] Frontend encryption.ts: evaluator pubkey from env
+- [x] docker-compose.yml: redis + evaluator
+- [x] Frontend TestTransactionsPage: submit via EvaluationGateway
+- [x] 37 TS tests pass, tsc clean
+
+## Phase 5 — Oracle replacement
+- [x] oracle.ts: CoinGecko zero-g/USD (done in Phase 2)
 
 ## Phase 3 — 0G Compute AI risk check
 - [ ] app/checks/ai_analysis.ts

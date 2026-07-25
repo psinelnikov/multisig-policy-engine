@@ -13,6 +13,6 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true
   },
-  "include": ["app/**/*.ts", "base/**/*.ts", "tests/**/*.ts"],
+  "include": ["app/**/*.ts", "base/**/*.ts", "evaluator/**/*.ts", "tests/**/*.ts"],
   "exclude": ["node_modules", "dist"]
 }

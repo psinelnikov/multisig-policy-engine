@@ -4,7 +4,7 @@ import { hexToBytes, bytesToHex, keccak256 } from "../base/utils.js";
 import { fetchActivePolicies, getCurrentBlockTimestamp } from "./rpc.js";
 import { matchesConditions, mapScoreToThreshold, today } from "./policy_matcher.js";
 import { runSimulation, computeScore } from "./simulation.js";
-import { fetchFtsoPrice } from "./checks/oracle.js";
+import { fetchNativePrice } from "./checks/oracle.js";
 import { encodeAbiParameters, parseAbiParameters, decodeAbiParameters } from "viem";
 
 export async function handleEvaluate(
@@ -69,7 +69,7 @@ export async function handleEvaluate(
   // PHASE 4: Convert value to USD via FTSO
   let nativeUsdPrice: bigint;
   try {
-    nativeUsdPrice = await fetchFtsoPrice();
+    nativeUsdPrice = await fetchNativePrice();
   } catch (err) {
     return [null, 0, `FTSO price fetch failed: ${err}`];
   }
