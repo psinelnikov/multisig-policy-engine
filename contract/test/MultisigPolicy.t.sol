@@ -7,7 +7,7 @@ import "../src/GovernanceMultisig.sol";
 import "../src/PolicyRegistry.sol";
 import "../src/AuditLog.sol";
 import "../src/MultisigWallet.sol";
-import "./mocks/MockTeeExtensionRegistry.sol";
+import "../src/EvaluationGateway.sol";
 
 contract MockTarget {
     bool public called;
@@ -20,7 +20,9 @@ contract MultisigPolicyTest is Test {
     PolicyRegistry public policyReg;
     AuditLog public auditLog;
     MultisigWallet public wallet;
-    MockTeeExtensionRegistry public mockRegistry;
+    EvaluationGateway public gateway;
+
+    address evaluatorSigner;
 
     address[] signers;
     address alice;
@@ -31,6 +33,7 @@ contract MultisigPolicyTest is Test {
         alice = makeAddr("alice");
         bob = makeAddr("bob");
         carol = makeAddr("carol");
+        evaluatorSigner = makeAddr("evaluator");
 
         signers.push(alice);
         signers.push(bob);
@@ -39,19 +42,20 @@ contract MultisigPolicyTest is Test {
         GovernanceMultisig govSingleton = new GovernanceMultisig();
         PolicyRegistry policyRegSingleton = new PolicyRegistry();
         AuditLog auditLogSingleton = new AuditLog();
-        
+
         gov = GovernanceMultisig(Clones.clone(address(govSingleton)));
         gov.initialize(signers);
-        
+
         policyReg = PolicyRegistry(Clones.clone(address(policyRegSingleton)));
         policyReg.initialize(address(gov));
-        
+
         auditLog = AuditLog(Clones.clone(address(auditLogSingleton)));
-        mockRegistry = new MockTeeExtensionRegistry();
-        
+
         MultisigWallet walletSingleton = new MultisigWallet();
         wallet = MultisigWallet(payable(Clones.clone(address(walletSingleton))));
-        wallet.initialize(address(auditLog), address(mockRegistry), address(gov));
+        wallet.initialize(address(auditLog), address(gov), evaluatorSigner);
+
+        gateway = new EvaluationGateway(address(this), evaluatorSigner);
     }
 
     // --- GovernanceMultisig tests ---
@@ -68,10 +72,10 @@ contract MultisigPolicyTest is Test {
         address[] memory badSigners = new address[](2);
         badSigners[0] = alice;
         badSigners[1] = alice;
-        
+
         GovernanceMultisig govSingleton = new GovernanceMultisig();
         address badGov = Clones.clone(address(govSingleton));
-        
+
         vm.expectRevert("Duplicate signer");
         GovernanceMultisig(badGov).initialize(badSigners);
     }
@@ -233,7 +237,8 @@ contract MultisigPolicyTest is Test {
         evalSigners[0] = alice;
         evalSigners[1] = bob;
 
-        wallet.submitEvaluation(id, 3, 0x00FF, 0, 2, evalSigners);
+        vm.prank(evaluatorSigner);
+        wallet.submitEvaluation(id, 3, 0x00FF, 0, 2, evalSigners, bytes32(0));
 
         (
             ,
@@ -246,7 +251,7 @@ contract MultisigPolicyTest is Test {
             uint8 riskScore,
             uint16 checkResults,
             uint256 matchedPolicyId,
-            bytes32 instructionId
+            bytes32 storageRoot
         ) = wallet.getTransaction(id);
 
         assertFalse(executed);
@@ -255,7 +260,19 @@ contract MultisigPolicyTest is Test {
         assertEq(riskScore, 3);
         assertEq(checkResults, 0x00FF);
         assertEq(matchedPolicyId, 0);
-        assertEq(instructionId, bytes32(0));
+        assertEq(storageRoot, bytes32(0));
+    }
+
+    function test_RevertSubmitEvaluationNotEvaluator() public {
+        uint256 id = wallet.submitTransaction(address(0x1), "", 0);
+
+        address[] memory evalSigners = new address[](2);
+        evalSigners[0] = alice;
+        evalSigners[1] = bob;
+
+        vm.prank(alice);
+        vm.expectRevert("Not evaluator signer");
+        wallet.submitEvaluation(id, 3, 0x00FF, 0, 2, evalSigners, bytes32(0));
     }
 
     function test_ApproveTx() public {
@@ -265,7 +282,8 @@ contract MultisigPolicyTest is Test {
         evalSigners[0] = alice;
         evalSigners[1] = bob;
 
-        wallet.submitEvaluation(id, 3, 0x00FF, 0, 2, evalSigners);
+        vm.prank(evaluatorSigner);
+        wallet.submitEvaluation(id, 3, 0x00FF, 0, 2, evalSigners, bytes32(0));
 
         vm.prank(alice);
         wallet.approveTx(id);
@@ -281,7 +299,8 @@ contract MultisigPolicyTest is Test {
         evalSigners[0] = alice;
         evalSigners[1] = bob;
 
-        wallet.submitEvaluation(id, 3, 0x00FF, 0, 2, evalSigners);
+        vm.prank(evaluatorSigner);
+        wallet.submitEvaluation(id, 3, 0x00FF, 0, 2, evalSigners, bytes32(0));
 
         vm.prank(alice);
         wallet.approveTx(id);
@@ -301,7 +320,8 @@ contract MultisigPolicyTest is Test {
         evalSigners[0] = alice;
         evalSigners[1] = bob;
 
-        wallet.submitEvaluation(id, 3, 0x00FF, 0, 2, evalSigners);
+        vm.prank(evaluatorSigner);
+        wallet.submitEvaluation(id, 3, 0x00FF, 0, 2, evalSigners, bytes32(0));
 
         vm.prank(alice);
         wallet.approveTx(id);
@@ -316,153 +336,46 @@ contract MultisigPolicyTest is Test {
         address[] memory evalSigners = new address[](1);
         evalSigners[0] = alice;
 
-        wallet.submitEvaluation(id, 3, 0x00FF, 0, 1, evalSigners);
+        vm.prank(evaluatorSigner);
+        wallet.submitEvaluation(id, 3, 0x00FF, 0, 1, evalSigners, bytes32(0));
 
         vm.prank(bob);
         vm.expectRevert("Not in required signer set");
         wallet.approveTx(id);
     }
 
-    // --- TEE Attestation tests ---
-
-    function test_SubmitEvaluationAttested() public {
+    function test_SubmitEvaluationWithStorageRoot() public {
         uint256 id = wallet.submitTransaction(address(0x1), "", 0);
 
-        bytes memory evalData = abi.encode(
-            uint256(0),
-            "Test Policy",
-            uint8(3),
-            uint8(2),
-            uint8(2),
-            _signerArray(alice, bob),
-            uint16(0x00FF),
-            uint8(1),
-            uint256(123)
-        );
+        address[] memory evalSigners = new address[](1);
+        evalSigners[0] = alice;
 
-        bytes32 instructionId = keccak256("test-instruction-1");
-        ITeeExtensionRegistry.ActionResult memory result = ITeeExtensionRegistry.ActionResult({
-            id: instructionId,
-            submissionTag: 2,
-            status: 1,
-            log: "",
-            opType: bytes32("EVALUATE_RISK"),
-            opCommand: bytes32(""),
-            additionalResultStatus: "",
-            version: "0.1.0",
-            data: evalData
-        });
-        mockRegistry.setActionResult(instructionId, result);
+        bytes32 root = keccak256("storage-root");
+        vm.prank(evaluatorSigner);
+        wallet.submitEvaluation(id, 10, 0x03FF, 1, 1, evalSigners, root);
 
-        wallet.submitEvaluationAttested(id, instructionId);
-
-        (
-            ,
-            ,
-            ,
-            ,
-            bool executed,
-            bool evaluated,
-            uint8 reqSigners,
-            uint8 riskScore,
-            uint16 checkResults,
-            uint256 matchedPolicyId,
-            bytes32 instrId
-        ) = wallet.getTransaction(id);
-
-        assertFalse(executed);
-        assertTrue(evaluated);
-        assertEq(reqSigners, 2);
-        assertEq(riskScore, 3);
-        assertEq(checkResults, 0x00FF);
-        assertEq(matchedPolicyId, 0);
-        assertEq(instrId, instructionId);
+        (, , , , , , , , , , bytes32 storageRoot) = wallet.getTransaction(id);
+        assertEq(storageRoot, root);
         assertEq(auditLog.getEntryCount(), 1);
     }
 
-    function test_RevertAttestedTwice() public {
-        uint256 id = wallet.submitTransaction(address(0x1), "", 0);
+    // --- EvaluationGateway tests ---
 
-        bytes memory evalData = abi.encode(
-            uint256(0), "Test", uint8(3), uint8(2), uint8(2), _signerArray(alice, bob),
-            uint16(0x00FF), uint8(1), uint256(123)
-        );
-
-        bytes32 instrId = keccak256("test-instr-2");
-        ITeeExtensionRegistry.ActionResult memory result = ITeeExtensionRegistry.ActionResult({
-            id: instrId,
-            submissionTag: 2,
-            status: 1,
-            log: "",
-            opType: bytes32("EVALUATE_RISK"),
-            opCommand: bytes32(""),
-            additionalResultStatus: "",
-            version: "0.1.0",
-            data: evalData
-        });
-        mockRegistry.setActionResult(instrId, result);
-
-        wallet.submitEvaluationAttested(id, instrId);
-
-        uint256 id2 = wallet.submitTransaction(address(0x2), "", 1);
-        vm.expectRevert("Instruction already processed");
-        wallet.submitEvaluationAttested(id2, instrId);
+    function test_GatewaySendEvaluate() public {
+        bytes memory payload = hex"deadbeef";
+        uint256 txId = gateway.sendEvaluate(payload);
+        assertEq(txId, 0);
+        assertEq(gateway.txCount(), 1);
     }
 
-    function test_RevertAttestedBadOpType() public {
-        uint256 id = wallet.submitTransaction(address(0x1), "", 0);
-
-        bytes32 instrId = keccak256("bad-op");
-        ITeeExtensionRegistry.ActionResult memory result = ITeeExtensionRegistry.ActionResult({
-            id: instrId,
-            submissionTag: 2,
-            status: 1,
-            log: "",
-            opType: bytes32("WRONG_TYPE"),
-            opCommand: bytes32(""),
-            additionalResultStatus: "",
-            version: "0.1.0",
-            data: ""
-        });
-        mockRegistry.setActionResult(instrId, result);
-
-        vm.expectRevert();
-        wallet.submitEvaluationAttested(id, instrId);
+    function test_GatewayEvaluatorSigner() public {
+        assertEq(gateway.evaluatorSigner(), evaluatorSigner);
     }
 
-    function test_AttestedThenApproveAndExecute() public {
-        uint256 id = wallet.submitTransaction(address(0x1), "", 0);
-
-        bytes memory evalData = abi.encode(
-            uint256(0), "Test", uint8(3), uint8(2), uint8(2), _signerArray(alice, bob),
-            uint16(0x00FF), uint8(1), uint256(123)
-        );
-
-        bytes32 instrId = keccak256("full-flow");
-        ITeeExtensionRegistry.ActionResult memory result = ITeeExtensionRegistry.ActionResult({
-            id: instrId,
-            submissionTag: 2,
-            status: 1,
-            log: "",
-            opType: bytes32("EVALUATE_RISK"),
-            opCommand: bytes32(""),
-            additionalResultStatus: "",
-            version: "0.1.0",
-            data: evalData
-        });
-        mockRegistry.setActionResult(instrId, result);
-
-        wallet.submitEvaluationAttested(id, instrId);
-
-        vm.prank(alice);
-        wallet.approveTx(id);
-        vm.prank(bob);
-        wallet.approveTx(id);
-
-        wallet.executeTx(id);
-
-        (, , , , bool executed, , , , , , ) = wallet.getTransaction(id);
-        assertTrue(executed);
+    function test_GatewaySetEvaluatorSigner() public {
+        address newSigner = makeAddr("new-evaluator");
+        gateway.setEvaluatorSigner(newSigner);
+        assertEq(gateway.evaluatorSigner(), newSigner);
     }
 
     // --- Helpers ---
@@ -514,7 +427,8 @@ contract MultisigPolicyTest is Test {
             checkResults: 0x00FF,
             requiredSigners: 2,
             totalSigners: 3,
-            timestamp: block.timestamp
+            timestamp: block.timestamp,
+            storageRoot: bytes32(0)
         });
     }
 
@@ -527,7 +441,8 @@ contract MultisigPolicyTest is Test {
             checkResults: 0x00FF,
             requiredSigners: 2,
             totalSigners: 3,
-            timestamp: block.timestamp
+            timestamp: block.timestamp,
+            storageRoot: bytes32(0)
         });
     }
 

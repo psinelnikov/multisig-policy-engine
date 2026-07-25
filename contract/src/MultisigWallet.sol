@@ -3,13 +3,15 @@ pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/proxy/utils/Initializable.sol";
 import "./AuditLog.sol";
-import "./TeeVerifier.sol";
-import "./interface/ITeeExtensionRegistry.sol";
 
+/// @title MultisigWallet
+/// @notice Policy-gated multisig wallet. Evaluation results are submitted by
+///         the registered evaluator signer (off-chain 0G Compute-backed service)
+///         instead of Flare TEE attestation.
 contract MultisigWallet is Initializable {
     AuditLog public auditLog;
-    ITeeExtensionRegistry public teeExtensionRegistry;
     address public governance;
+    address public evaluatorSigner;
 
     struct Transaction {
         address target;
@@ -23,36 +25,36 @@ contract MultisigWallet is Initializable {
         uint16 checkResults;
         uint256 matchedPolicyId;
         bool evaluated;
-        bytes32 instructionId;
+        bytes32 storageRoot;
     }
 
     uint256 public txCount;
     mapping(uint256 => Transaction) public transactions;
     mapping(uint256 => mapping(address => bool)) public hasApproved;
     mapping(uint256 => uint256) public approvalCount;
-    mapping(bytes32 => bool) public processedInstructions;
 
     event TransactionSubmitted(uint256 indexed txId, address indexed target, uint256 nonce);
-    event EvaluationAttested(
+    event EvaluationSubmitted(
         uint256 indexed txId,
-        bytes32 indexed instructionId,
         uint256 matchedPolicyId,
         uint8 riskScore,
-        uint16 checkResults
+        uint16 checkResults,
+        bytes32 storageRoot
     );
     event TxApproved(uint256 indexed txId, address indexed signer);
     event TxExecuted(uint256 indexed txId);
+    event EvaluatorSignerUpdated(address oldSigner, address newSigner);
 
     constructor() {}
 
     function initialize(
         address _auditLog,
-        address _teeExtensionRegistry,
-        address _governance
+        address _governance,
+        address _evaluatorSigner
     ) external initializer {
         auditLog = AuditLog(_auditLog);
-        teeExtensionRegistry = ITeeExtensionRegistry(_teeExtensionRegistry);
         governance = _governance;
+        evaluatorSigner = _evaluatorSigner;
     }
 
     function submitTransaction(
@@ -70,14 +72,17 @@ contract MultisigWallet is Initializable {
         return id;
     }
 
+    /// @notice Submit an evaluation result. Only the registered evaluator signer may call this.
     function submitEvaluation(
         uint256 _txId,
         uint8 _riskScore,
         uint16 _checkResults,
         uint256 _matchedPolicyId,
         uint8 _requiredSigners,
-        address[] calldata _signers
+        address[] calldata _signers,
+        bytes32 _storageRoot
     ) external {
+        require(msg.sender == evaluatorSigner, "Not evaluator signer");
         Transaction storage t = transactions[_txId];
         require(!t.evaluated, "Already evaluated");
         require(!t.executed, "Already executed");
@@ -88,8 +93,9 @@ contract MultisigWallet is Initializable {
         t.matchedPolicyId = _matchedPolicyId;
         t.requiredSigners = _requiredSigners;
         t.requiredSignerSet = _signers;
+        t.storageRoot = _storageRoot;
 
-        auditLog.postEntry(
+        auditLog.postEntryMemory(
             AuditLog.AuditEntry({
                 evaluationId: keccak256(abi.encode(t.nonce, _matchedPolicyId, block.timestamp)),
                 policyId: _matchedPolicyId,
@@ -98,55 +104,12 @@ contract MultisigWallet is Initializable {
                 checkResults: _checkResults,
                 requiredSigners: _requiredSigners,
                 totalSigners: uint8(_signers.length),
-                timestamp: block.timestamp
-            })
-        );
-    }
-
-    function submitEvaluationAttested(
-        uint256 _txId,
-        bytes32 _instructionId
-    ) external {
-        Transaction storage t = transactions[_txId];
-        require(!t.evaluated, "Already evaluated");
-        require(!t.executed, "Already executed");
-        require(!processedInstructions[_instructionId], "Instruction already processed");
-
-        TeeVerifier.VerifiedEvaluation memory eval = TeeVerifier.verifyAndDecode(
-            teeExtensionRegistry,
-            _instructionId
-        );
-
-        processedInstructions[_instructionId] = true;
-
-        t.evaluated = true;
-        t.requiredSigners = eval.requiredSigners;
-        t.requiredSignerSet = eval.signers;
-        t.riskScore = eval.riskScore;
-        t.checkResults = eval.checkResults;
-        t.matchedPolicyId = eval.matchedPolicyId;
-        t.instructionId = _instructionId;
-
-        auditLog.postEntryMemory(
-            AuditLog.AuditEntry({
-                evaluationId: keccak256(abi.encode(t.nonce, eval.matchedPolicyId, block.timestamp, _instructionId)),
-                policyId: eval.matchedPolicyId,
-                policyName: eval.policyName,
-                riskScore: eval.riskScore,
-                checkResults: eval.checkResults,
-                requiredSigners: eval.requiredSigners,
-                totalSigners: uint8(eval.signers.length),
-                timestamp: block.timestamp
+                timestamp: block.timestamp,
+                storageRoot: _storageRoot
             })
         );
 
-        emit EvaluationAttested(
-            _txId,
-            _instructionId,
-            eval.matchedPolicyId,
-            eval.riskScore,
-            eval.checkResults
-        );
+        emit EvaluationSubmitted(_txId, _matchedPolicyId, _riskScore, _checkResults, _storageRoot);
     }
 
     function approveTx(uint256 _txId) external {
@@ -181,6 +144,12 @@ contract MultisigWallet is Initializable {
         emit TxExecuted(_txId);
     }
 
+    function setEvaluatorSigner(address _signer) external {
+        require(msg.sender == governance, "Only governance");
+        emit EvaluatorSignerUpdated(evaluatorSigner, _signer);
+        evaluatorSigner = _signer;
+    }
+
     function getTransaction(uint256 _txId)
         external
         view
@@ -195,7 +164,7 @@ contract MultisigWallet is Initializable {
             uint8 riskScore,
             uint16 checkResults,
             uint256 matchedPolicyId,
-            bytes32 instructionId
+            bytes32 storageRoot
         )
     {
         Transaction storage t = transactions[_txId];
@@ -210,7 +179,7 @@ contract MultisigWallet is Initializable {
             t.riskScore,
             t.checkResults,
             t.matchedPolicyId,
-            t.instructionId
+            t.storageRoot
         );
     }
 

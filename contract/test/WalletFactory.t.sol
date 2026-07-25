@@ -8,14 +8,15 @@ import "../src/GovernanceMultisig.sol";
 import "../src/PolicyRegistry.sol";
 import "../src/AuditLog.sol";
 import "../src/PresetPolicyRegistry.sol";
-import "./mocks/MockTeeExtensionRegistry.sol";
+import "../src/EvaluationGateway.sol";
 
 contract WalletFactoryTest is Test {
     using Clones for address;
     WalletFactory public factory;
-    MockTeeExtensionRegistry public mockRegistry;
+    EvaluationGateway public gateway;
     PresetPolicyRegistry public presetReg;
 
+    address evaluatorSigner;
     address alice;
     address bob;
     address carol;
@@ -32,23 +33,25 @@ contract WalletFactoryTest is Test {
         alice = makeAddr("alice");
         bob = makeAddr("bob");
         carol = makeAddr("carol");
+        evaluatorSigner = makeAddr("evaluator");
 
-        mockRegistry = new MockTeeExtensionRegistry();
         presetReg = new PresetPolicyRegistry();
 
         MultisigWallet singleton = new MultisigWallet();
         GovernanceMultisig govSingleton = new GovernanceMultisig();
         PolicyRegistry policyRegSingleton = new PolicyRegistry();
         AuditLog auditLogSingleton = new AuditLog();
-        
+
         factory = new WalletFactory(
             address(singleton),
             address(govSingleton),
             address(policyRegSingleton),
             address(auditLogSingleton),
-            address(mockRegistry),
+            evaluatorSigner,
             address(presetReg)
         );
+
+        gateway = new EvaluationGateway(address(this), evaluatorSigner);
     }
 
     function test_CreateWalletNoPresets() public {
@@ -66,6 +69,7 @@ contract WalletFactoryTest is Test {
 
         MultisigWallet wallet = MultisigWallet(payable(dep.wallet));
         assertEq(wallet.governance(), dep.governance);
+        assertEq(wallet.evaluatorSigner(), evaluatorSigner);
         assertEq(wallet.txCount(), 0);
 
         PolicyRegistry polReg = PolicyRegistry(dep.policyRegistry);
@@ -216,7 +220,8 @@ contract WalletFactoryTest is Test {
         evalSigners[0] = alice;
         evalSigners[1] = bob;
 
-        wallet.submitEvaluation(txId, 3, 0x00FF, 0, 2, evalSigners);
+        vm.prank(evaluatorSigner);
+        wallet.submitEvaluation(txId, 3, 0x00FF, 0, 2, evalSigners, bytes32(0));
 
         vm.prank(alice);
         wallet.approveTx(txId);

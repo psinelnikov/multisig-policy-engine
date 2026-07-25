@@ -17,19 +17,21 @@ Baseline tag: `flare-baseline-2025-07-25` (35 Solidity tests, 37 TS tests passin
 
 ## Phase 1 — Chain migration: contracts + config
 ### 1a. Foundry config
-- [ ] foundry.toml: evm_version=cancun, galileo RPC, keep coston2 ref
+- [x] foundry.toml: evm_version=cancun, galileo RPC, keep coston2 ref
 ### 1b. Contract changes
-- [ ] Delete InstructionSender.sol, ITeeExtensionRegistry.sol, ITeeMachineRegistry.sol
-- [ ] New EvaluationGateway.sol (event-based, replaces InstructionSender)
-- [ ] MultisigWallet.sol: remove TEE registry, add evaluatorSigner, remove submitEvaluationAttested
-- [ ] EvaluatorVerifier.sol (replaces TeeVerifier.sol): ECDSA verification, no Flare deps
-- [ ] AuditLog.sol: add storageRoot field
-- [ ] WalletFactory.sol: remove TEE registry param, add evaluatorSigner
-- [ ] Delete TeeVerifier.sol
+- [x] Delete InstructionSender.sol, ITeeExtensionRegistry.sol, ITeeMachineRegistry.sol
+- [x] New EvaluationGateway.sol (event-based, replaces InstructionSender)
+- [x] MultisigWallet.sol: remove TEE registry, add evaluatorSigner, remove submitEvaluationAttested
+- [x] EvaluatorVerifier.sol (replaces TeeVerifier.sol): ECDSA verification, no Flare deps
+- [x] AuditLog.sol: add storageRoot field
+- [x] WalletFactory.sol: remove TEE registry param, add evaluatorSigner
+- [x] Delete TeeVerifier.sol
 ### 1b-tests. Update Solidity tests
-- [ ] MultisigPolicy.t.sol: new interfaces, remove attested tests
-- [ ] WalletFactory.t.sol: new constructor signature
-- [ ] Delete mock registries (no longer needed)
+- [x] MultisigPolicy.t.sol: new interfaces, remove attested tests, add evaluator/gateway tests
+- [x] WalletFactory.t.sol: new constructor signature
+- [x] Delete mock registries + DeployInstructionSender.s.sol
+- [x] Deploy.s.sol updated for EvaluationGateway + evaluatorSigner
+- [x] All 36 tests pass (was 35)
 ### 1c. Deploy script
 - [ ] Galileo deploy script (scripted, execution deferred — needs funded wallet)
 ### 1d. Frontend chain config
@@ -68,7 +70,13 @@ Baseline tag: `flare-baseline-2025-07-25` (35 Solidity tests, 37 TS tests passin
 - [ ] .env.example update
 
 ## Deviations from plan
-- (none yet)
+- MultisigWallet.initialize takes 3 params (auditLog, governance, evaluatorSigner) not 2.
+  The plan says "set during init" but also says 2 params — resolved by including evaluatorSigner
+  as 3rd param so it's set atomically at init. WalletFactory passes evaluatorSigner (replaces
+  teeExtensionRegistry in constructor).
+- submitEvaluation now takes a 7th param bytes32 _storageRoot (for 0G Storage root hash).
+  Old: (txId, riskScore, checkResults, matchedPolicyId, requiredSigners, signers)
+  New: (txId, riskScore, checkResults, matchedPolicyId, requiredSigners, signers, storageRoot)
 
 ## Deployment status
 - Contracts: NOT YET DEPLOYED to Galileo (needs funded wallet + network)

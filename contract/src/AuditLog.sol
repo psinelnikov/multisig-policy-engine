@@ -13,6 +13,7 @@ contract AuditLog is Initializable {
         uint8 requiredSigners;
         uint8 totalSigners;
         uint256 timestamp;
+        bytes32 storageRoot;
     }
 
     AuditEntry[] public entries;

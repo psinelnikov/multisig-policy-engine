@@ -13,7 +13,7 @@ contract WalletFactory {
     address public immutable governanceSingleton;
     address public immutable policyRegistrySingleton;
     address public immutable auditLogSingleton;
-    address public immutable teeExtensionRegistry;
+    address public immutable evaluatorSigner;
     address public immutable presetPolicyRegistry;
 
     struct WalletDeployment {
@@ -40,14 +40,14 @@ contract WalletFactory {
         address _governanceSingleton,
         address _policyRegistrySingleton,
         address _auditLogSingleton,
-        address _teeExtensionRegistry,
+        address _evaluatorSigner,
         address _presetPolicyRegistry
     ) {
         walletSingleton = _walletSingleton;
         governanceSingleton = _governanceSingleton;
         policyRegistrySingleton = _policyRegistrySingleton;
         auditLogSingleton = _auditLogSingleton;
-        teeExtensionRegistry = _teeExtensionRegistry;
+        evaluatorSigner = _evaluatorSigner;
         presetPolicyRegistry = _presetPolicyRegistry;
     }
 
@@ -70,7 +70,7 @@ contract WalletFactory {
 
         address walletProxy = Clones.clone(walletSingleton);
         MultisigWallet wallet = MultisigWallet(payable(walletProxy));
-        wallet.initialize(auditProxy, teeExtensionRegistry, govProxy);
+        wallet.initialize(auditProxy, govProxy, evaluatorSigner);
 
         if (_presetPolicyIds.length > 0) {
             policyReg.addPresetPolicies(_presetPolicyIds, _signers, presetPolicyRegistry);
