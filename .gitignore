@@ -4,3 +4,6 @@ dist/
 .env.local
 .env.production
 *.log
+
+# Local Netlify folder
+.netlify

@@ -2,20 +2,27 @@
   "name": "multisig-policy-engine",
   "version": "0.1.0",
   "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "build": "tsc",
-    "start": "node dist/base/index.js",
-    "dev": "tsx base/index.ts",
+    "start": "node dist/evaluator/index.js",
+    "dev": "tsx evaluator/index.ts",
+    "evaluator": "tsx evaluator/index.ts",
     "test": "vitest run"
   },
   "dependencies": {
-    "viem": "^2.21.0",
-    "eciesjs": "^0.4.0"
+    "@0gfoundation/0g-compute-ts-sdk": "^0.9.0",
+    "@0gfoundation/0g-ts-sdk": "^1.2.8",
+    "eciesjs": "^0.4.0",
+    "ethers": "^6.13.1",
+    "viem": "^2.21.0"
   },
   "devDependencies": {
-    "typescript": "^5.6.0",
+    "@types/node": "^22.0.0",
     "tsx": "^4.19.0",
-    "vitest": "^2.1.0",
-    "@types/node": "^22.0.0"
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
   }
 }
