@@ -1,6 +1,6 @@
 import { useParams, Link } from "react-router-dom";
 import { useReadContract } from "wagmi";
-import { FLARE_COSTON2_CHAIN, shortAddress, formatTimestamp, decodeCheckResults } from "../lib/constants";
+import { ZG_GALILEO_CHAIN, shortAddress, formatTimestamp, decodeCheckResults } from "../lib/constants";
 import { CopyableAddress } from "../components/CopyableAddress";
 import { POLICY_REGISTRY_ABI } from "../lib/abi";
 import { useMultisig } from "../context/MultisigContext";
@@ -34,7 +34,7 @@ export default function PolicyDetailPage() {
     abi: POLICY_REGISTRY_ABI,
     functionName: "getPolicy",
     args: [policyId],
-    chainId: FLARE_COSTON2_CHAIN.id,
+    chainId: ZG_GALILEO_CHAIN.id,
   });
 
   if (isLoading || !policy) {

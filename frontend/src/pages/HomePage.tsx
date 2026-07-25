@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import { useAccount, useReadContract } from "wagmi";
-import { FLARE_COSTON2_CHAIN, CONTRACTS } from "../lib/constants";
+import { ZG_GALILEO_CHAIN, CONTRACTS } from "../lib/constants";
 import { WALLET_FACTORY_ABI } from "../lib/abi";
 import { useMultisig, type MultisigDeployment } from "../context/MultisigContext";
 import { CopyableAddress } from "../components/CopyableAddress";
@@ -16,7 +16,7 @@ export default function HomePage() {
     abi: WALLET_FACTORY_ABI,
     functionName: "getWalletsForCreator",
     args: address ? [address] : undefined,
-    chainId: FLARE_COSTON2_CHAIN.id,
+    chainId: ZG_GALILEO_CHAIN.id,
     query: { enabled: !!address },
   });
 

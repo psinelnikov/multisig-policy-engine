@@ -1,5 +1,5 @@
 import { useReadContracts } from "wagmi";
-import { FLARE_COSTON2_CHAIN, shortAddress, riskLabel } from "../lib/constants";
+import { ZG_GALILEO_CHAIN, shortAddress, riskLabel } from "../lib/constants";
 import { CopyableAddress } from "../components/CopyableAddress";
 import { POLICY_REGISTRY_ABI } from "../lib/abi";
 import { Link, Navigate } from "react-router-dom";
@@ -33,7 +33,7 @@ export default function PoliciesPage() {
         address: policyRegistryAddress,
         abi: POLICY_REGISTRY_ABI,
         functionName: "getPolicyCount",
-        chainId: FLARE_COSTON2_CHAIN.id,
+        chainId: ZG_GALILEO_CHAIN.id,
       },
     ],
   });
@@ -47,7 +47,7 @@ export default function PoliciesPage() {
           abi: POLICY_REGISTRY_ABI,
           functionName: "getPolicy",
           args: [BigInt(i)] as const,
-          chainId: FLARE_COSTON2_CHAIN.id,
+          chainId: ZG_GALILEO_CHAIN.id,
         }))
       : [],
     query: { enabled: !!count },

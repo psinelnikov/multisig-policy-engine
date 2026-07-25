@@ -1,24 +1,24 @@
 import { useAccount, useConnect, useDisconnect, useBalance, useSwitchChain, useChainId } from "wagmi";
 import { formatUnits } from "viem";
-import { FLARE_COSTON2_CHAIN, shortAddress } from "../lib/constants";
+import { ZG_GALILEO_CHAIN, shortAddress } from "../lib/constants";
 
 export function ConnectButton() {
   const { address, isConnected } = useAccount();
   const { connectors, connect } = useConnect();
   const { disconnect } = useDisconnect();
-  const { data: balance } = useBalance({ address, chainId: FLARE_COSTON2_CHAIN.id });
+  const { data: balance } = useBalance({ address, chainId: ZG_GALILEO_CHAIN.id });
   const { switchChain } = useSwitchChain();
   const chainId = useChainId();
 
   const handleSwitchNetwork = async () => {
     try {
-      await switchChain({ chainId: FLARE_COSTON2_CHAIN.id });
+      await switchChain({ chainId: ZG_GALILEO_CHAIN.id });
     } catch (error) {
       console.error("Failed to switch network:", error);
     }
   };
 
-  const isWrongNetwork = chainId !== FLARE_COSTON2_CHAIN.id;
+  const isWrongNetwork = chainId !== ZG_GALILEO_CHAIN.id;
 
   if (isConnected && address) {
     return (
@@ -64,7 +64,7 @@ export function ConnectButton() {
 
   return (
     <button
-      onClick={() => connect({ connector: primaryConnector, chainId: FLARE_COSTON2_CHAIN.id })}
+      onClick={() => connect({ connector: primaryConnector, chainId: ZG_GALILEO_CHAIN.id })}
       className="btn btn-primary"
     >
       Connect Wallet

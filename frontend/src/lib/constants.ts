@@ -1,14 +1,14 @@
-export const FLARE_COSTON2_CHAIN = {
-  id: 114,
-  name: "Flare Coston2",
-  nativeCurrency: { name: "C2FLR", symbol: "C2FLR", decimals: 18 },
+export const ZG_GALILEO_CHAIN = {
+  id: 16602,
+  name: "0G Galileo Testnet",
+  nativeCurrency: { name: "0G", symbol: "0G", decimals: 18 },
   rpcUrls: {
     default: { http: ["/rpc"] },
   },
   blockExplorers: {
     default: {
-      name: "Coston2 Explorer",
-      url: "https://coston2-explorer.flare.network",
+      name: "0G Chainscan Galileo",
+      url: "https://chainscan-galileo.0g.ai",
     },
   },
 } as const;
@@ -20,7 +20,7 @@ export const CONTRACTS = {
   auditLog: import.meta.env.VITE_AUDIT_LOG_ADDR as `0x${string}`,
   multisigWallet: import.meta.env.VITE_MULTISIG_WALLET_ADDR as `0x${string}`,
   presetPolicyRegistry: import.meta.env.VITE_PRESET_POLICY_REGISTRY_ADDR as `0x${string}`,
-  instructionSender: import.meta.env.VITE_INSTRUCTION_SENDER_ADDR as `0x${string}`,
+  evaluationGateway: import.meta.env.VITE_EVALUATION_GATEWAY_ADDR as `0x${string}`,
   testToken: import.meta.env.VITE_TEST_TOKEN_ADDR as `0x${string}`,
 } as const;
 
@@ -47,6 +47,7 @@ export const CHECK_LABELS: Record<number, string> = {
   7: "Contract Age",
   8: "Tx Volume",
   9: "Calldata",
+  10: "AI Analysis",
 };
 
 export function riskColor(score: number): string {
@@ -65,7 +66,7 @@ export function riskLabel(score: number): string {
 
 export function decodeCheckResults(bitmap: number): { bit: number; label: string; pass: boolean }[] {
   const results: { bit: number; label: string; pass: boolean }[] = [];
-  for (let i = 0; i <= 9; i++) {
+  for (let i = 0; i <= 10; i++) {
     results.push({
       bit: i,
       label: CHECK_LABELS[i] || `Check ${i}`,
@@ -85,7 +86,7 @@ export function formatTimestamp(ts: bigint): string {
 }
 
 export function explorerUrl(addr: string): string {
-  return `https://coston2-explorer.flare.network/address/${addr}`;
+  return `https://chainscan-galileo.0g.ai/address/${addr}`;
 }
 
 export function formatUsd(val: bigint): string {

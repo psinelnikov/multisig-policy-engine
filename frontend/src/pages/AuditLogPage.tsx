@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useReadContracts } from "wagmi";
-import { FLARE_COSTON2_CHAIN, riskColor, riskLabel, formatTimestamp, decodeCheckResults } from "../lib/constants";
+import { ZG_GALILEO_CHAIN, riskColor, riskLabel, formatTimestamp, decodeCheckResults } from "../lib/constants";
 import { AUDIT_LOG_ABI } from "../lib/abi";
 import { Link } from "react-router-dom";
 import { useMultisig } from "../context/MultisigContext";
@@ -33,7 +33,7 @@ export default function AuditLogPage() {
         address: auditLogAddress,
         abi: AUDIT_LOG_ABI,
         functionName: "getEntryCount",
-        chainId: FLARE_COSTON2_CHAIN.id,
+        chainId: ZG_GALILEO_CHAIN.id,
       },
     ],
   });
@@ -50,7 +50,7 @@ export default function AuditLogPage() {
             abi: AUDIT_LOG_ABI,
             functionName: "getEntry",
             args: [BigInt(page * PAGE_SIZE + i)] as const,
-            chainId: FLARE_COSTON2_CHAIN.id,
+            chainId: ZG_GALILEO_CHAIN.id,
           })
         )
       : [],

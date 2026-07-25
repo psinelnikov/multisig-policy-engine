@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useReadContracts, useReadContract, useWriteContract, useAccount, useWaitForTransactionReceipt } from "wagmi";
-import { FLARE_COSTON2_CHAIN, shortAddress, formatTimestamp } from "../lib/constants";
+import { ZG_GALILEO_CHAIN, shortAddress, formatTimestamp } from "../lib/constants";
 import { CopyableAddress } from "../components/CopyableAddress";
 import { GOVERNANCE_MULTISIG_ABI, POLICY_REGISTRY_ABI } from "../lib/abi";
 import { encodeFunctionData, decodeFunctionData, type Hex } from "viem";
@@ -36,7 +36,7 @@ export default function GovernancePage() {
     address: governanceAddress,
     abi: GOVERNANCE_MULTISIG_ABI,
     functionName: "proposalCount",
-    chainId: FLARE_COSTON2_CHAIN.id,
+    chainId: ZG_GALILEO_CHAIN.id,
   });
 
   const proposalCount = proposalCountData ? Number(proposalCountData) : 0;
@@ -45,7 +45,7 @@ export default function GovernancePage() {
     address: governanceAddress,
     abi: GOVERNANCE_MULTISIG_ABI,
     functionName: "getSignerCount",
-    chainId: FLARE_COSTON2_CHAIN.id,
+    chainId: ZG_GALILEO_CHAIN.id,
   });
 
   const totalSigners = signerCountData ? Number(signerCountData) : 0;
@@ -56,7 +56,7 @@ export default function GovernancePage() {
       abi: GOVERNANCE_MULTISIG_ABI,
       functionName: "getProposal",
       args: [BigInt(i)] as const,
-      chainId: FLARE_COSTON2_CHAIN.id,
+      chainId: ZG_GALILEO_CHAIN.id,
     })),
     query: { enabled: proposalCount > 0 },
   });
@@ -122,7 +122,7 @@ function ProposalRow({ proposal, totalSigners, userAddress, governanceAddress, p
     abi: GOVERNANCE_MULTISIG_ABI,
     functionName: "hasApproved",
     args: [proposal.id, userAddress ?? "0x0000000000000000000000000000000000000000"],
-    chainId: FLARE_COSTON2_CHAIN.id,
+    chainId: ZG_GALILEO_CHAIN.id,
   });
 
   const canApprove = !proposal.executed && !hasApproved && userAddress;
@@ -157,7 +157,7 @@ function ProposalRow({ proposal, totalSigners, userAddress, governanceAddress, p
                   abi: GOVERNANCE_MULTISIG_ABI,
                   functionName: "approve",
                   args: [proposal.id],
-                  chainId: FLARE_COSTON2_CHAIN.id,
+                  chainId: ZG_GALILEO_CHAIN.id,
                 })
               }
               disabled={isConfirming}
@@ -174,7 +174,7 @@ function ProposalRow({ proposal, totalSigners, userAddress, governanceAddress, p
                   abi: GOVERNANCE_MULTISIG_ABI,
                   functionName: "execute",
                   args: [proposal.id],
-                  chainId: FLARE_COSTON2_CHAIN.id,
+                  chainId: ZG_GALILEO_CHAIN.id,
                 })
               }
               disabled={isConfirming}
@@ -390,7 +390,7 @@ function CreateProposalForm({
         calldata as Hex,
         `Add policy: ${name}`,
       ],
-      chainId: FLARE_COSTON2_CHAIN.id,
+      chainId: ZG_GALILEO_CHAIN.id,
     });
   };
 

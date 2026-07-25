@@ -1,9 +1,9 @@
 import { useChainId } from "wagmi";
-import { FLARE_COSTON2_CHAIN } from "../lib/constants";
+import { ZG_GALILEO_CHAIN } from "../lib/constants";
 
 export function NetworkStatus() {
   const chainId = useChainId();
-  const isCorrectNetwork = chainId === FLARE_COSTON2_CHAIN.id;
+  const isCorrectNetwork = chainId === ZG_GALILEO_CHAIN.id;
 
   if (isCorrectNetwork) {
     return (

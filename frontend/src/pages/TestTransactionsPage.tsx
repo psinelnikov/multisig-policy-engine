@@ -1,66 +1,21 @@
 import { useState, useEffect, useCallback } from "react";
 import { useAccount, useWriteContract, useWaitForTransactionReceipt, usePublicClient } from "wagmi";
-import { parseEther, formatEther, encodeFunctionData, parseUnits, type Address, keccak256, hexToBytes, bytesToHex, encodePacked, toBytes, stringToHex } from "viem";
+import { parseEther, formatEther, encodeFunctionData, parseUnits, type Address } from "viem";
 import { useMultisig } from "../context/MultisigContext";
-import { POLICY_REGISTRY_ABI } from "../lib/abi";
-import { FLARE_COSTON2_CHAIN } from "../lib/constants";
-import { MULTISIG_WALLET_ABI, ERC20_ABI, INSTRUCTION_SENDER_ABI } from "../lib/abi";
+import { POLICY_REGISTRY_ABI, MULTISIG_WALLET_ABI, ERC20_ABI, EVALUATION_GATEWAY_ABI } from "../lib/abi";
 import { CONTRACTS, shortAddress, riskColor, riskLabel, decodeCheckResults } from "../lib/constants";
 import { CopyableAddress } from "../components/CopyableAddress";
 import { useSearchParams, Link } from "react-router-dom";
-import { 
-  encryptEvaluateRequest, 
-  fetchTeePublicKey, 
-  pollForEvaluationResult, 
-  decodeEvaluationResult,
-  type EvaluateRequest 
-} from "../lib/encryption";
+import { encryptEvaluateRequest, getEvaluatorPublicKey, type EvaluateRequest } from "../lib/encryption";
 
 const TEST_SCENARIOS = [
-  {
-    id: 0,
-    name: "Low Value Transfer",
-    description: "Test auto-approve policy for transfers under $1,000",
-    value: "0.0001",
-    expectedRiskScore: 15,
-    policyId: 0,
-    expectedRequiredSigners: 1,
-    tokenValue: "500",
-  },
-  {
-    id: 1,
-    name: "High-Value Transfer",
-    description: "Test policy for transfers over 1000 USDC requiring 2 signers",
-    value: "0.001",
-    expectedRiskScore: 45,
-    policyId: 1,
-    expectedRequiredSigners: 2,
-    tokenValue: "1500",
-  },
-  {
-    id: 2,
-    name: "Very High Value Transfer",
-    description: "Test admin-level policy for very large transfers >$50K",
-    value: "0.01",
-    expectedRiskScore: 85,
-    policyId: 2,
-    expectedRequiredSigners: 3,
-    tokenValue: "100000",
-  },
-  {
-    id: 3,
-    name: "DeFi Interaction",
-    description: "Test whitelisted DeFi protocol policy",
-    value: "0.0005",
-    expectedRiskScore: 35,
-    policyId: 3,
-    expectedRequiredSigners: 2,
-    tokenValue: "5000",
-  },
+  { id: 0, name: "Low Value Transfer", description: "Transfers under $1,000 — auto-approve, 1 signer", value: "0.0001", tokenValue: "500" },
+  { id: 1, name: "High-Value Transfer", description: "Transfers over 1000 USDC — 2 signers required", value: "0.001", tokenValue: "1500" },
+  { id: 2, name: "Very High Value Transfer", description: "Large transfers >$50K — admin-level, 3 signers", value: "0.01", tokenValue: "100000" },
+  { id: 3, name: "DeFi Interaction", description: "Whitelisted DeFi protocol interaction", value: "0.0005", tokenValue: "5000" },
 ];
 
-// TEE Proxy URL - configurable via env
-const TEE_PROXY_URL = import.meta.env.VITE_TEE_PROXY_URL || "/tee";
+const EVALUATOR_PROXY = import.meta.env.VITE_EVALUATOR_URL || "/evaluator";
 
 export default function TestTransactionsPage() {
   const { address } = useAccount();
@@ -68,914 +23,361 @@ export default function TestTransactionsPage() {
   const publicClient = usePublicClient();
   const [searchParams] = useSearchParams();
   const txIdFromUrl = searchParams.get("tx");
-  
-  const [activeTab, setActiveTab] = useState<"scenarios" | "erc20" | "mint" | "custom" | "tee">("scenarios");
+
+  const [activeTab, setActiveTab] = useState<"scenarios" | "erc20" | "mint" | "custom" | "evaluate">("scenarios");
   const [selectedScenario, setSelectedScenario] = useState<number | null>(null);
-  
-  // ERC20 specific state
+
   const [tokenBalance, setTokenBalance] = useState<string>("0");
   const [erc20Target, setErc20Target] = useState("");
   const [erc20Amount, setErc20Amount] = useState("");
-  
-  // Custom transaction state
   const [customTarget, setCustomTarget] = useState("");
   const [customValue, setCustomValue] = useState("");
   const [customData, setCustomData] = useState("0x");
-  
-  // TEE Evaluation state
-  const [teeStatus, setTeeStatus] = useState<"idle" | "fetching_key" | "encrypting" | "sending" | "polling" | "attesting" | "complete" | "error">("idle");
-  const [teeError, setTeeError] = useState<string | null>(null);
-  const [teePublicKey, setTeePublicKey] = useState<`0x${string}` | null>(null);
-  const [instructionId, setInstructionId] = useState<`0x${string}` | null>(null);
-  const [evaluationResult, setEvaluationResult] = useState<{
-    decision: {
-      matchedPolicyId: bigint;
-      policyName: string;
-      riskScore: number;
-      requiredSigners: number;
-      totalSigners: number;
-      signers: Address[];
-      checkResults: number;
-      policiesEvaluated: number;
-      nonce: bigint;
-    };
-    receipt: {
-      evaluationId: `0x${string}`;
-      policyId: bigint;
-      policyName: string;
-      riskScore: number;
-      checkResults: number;
-      requiredSigners: number;
-      totalSigners: number;
-      timestamp: bigint;
-    };
-  } | null>(null);
-  
-  // Transaction state
-  const [txNonce, setTxNonce] = useState(Date.now().toString());
+
+  const [evalStatus, setEvalStatus] = useState<"idle" | "encrypting" | "sending" | "polling" | "complete" | "error">("idle");
+  const [evalError, setEvalError] = useState<string | null>(null);
+
   const [submittedTxId, setSubmittedTxId] = useState<string | null>(txIdFromUrl);
   const [txDetails, setTxDetails] = useState<{
-    target: string;
-    value: string;
-    data: string;
-    evaluated: boolean;
-    executed: boolean;
-    requiredSigners: number;
-    approvalCount: number;
-    riskScore: number;
+    target: string; value: string; data: string;
+    evaluated: boolean; executed: boolean;
+    requiredSigners: number; approvalCount: number; riskScore: number;
+    checkResults: number; storageRoot: string;
   } | null>(null);
 
   const { writeContract, data: hash, isPending, error } = useWriteContract();
   const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({ hash });
-  
-  const { writeContract: writeEvaluationAttested, data: evalHash, isPending: isEvalPending } = useWriteContract();
-  const { isLoading: isEvalConfirming, isSuccess: isEvalConfirmed } = useWaitForTransactionReceipt({ hash: evalHash });
 
-  const { writeContract: writeMockEvaluation, data: mockEvalHash, isPending: isMockEvalPending } = useWriteContract();
-  const { isLoading: isMockEvalConfirming, isSuccess: isMockEvalConfirmed } = useWaitForTransactionReceipt({ hash: mockEvalHash });
+  const { writeContract: writeGateway, data: gatewayHash, isPending: isGatewayPending } = useWriteContract();
+  const { isLoading: isGatewayConfirming, isSuccess: isGatewayConfirmed } = useWaitForTransactionReceipt({ hash: gatewayHash });
 
-  // Fetch token balance - defined at component level for reuse
   const fetchBalance = useCallback(async () => {
     if (!selectedMultisig || !publicClient) return;
     try {
       const result = await publicClient.readContract({
-        address: CONTRACTS.testToken,
-        abi: ERC20_ABI,
-        functionName: "balanceOf",
-        args: [selectedMultisig.wallet],
+        address: CONTRACTS.testToken, abi: ERC20_ABI,
+        functionName: "balanceOf", args: [selectedMultisig.wallet],
       });
-      // Ensure result is bigint before formatting
-      const balanceBigInt = typeof result === 'bigint' ? result : BigInt(result as string);
-      
-      // Token has 18 decimals - use formatEther
-      const formatted = formatEther(balanceBigInt);
-      setTokenBalance(formatted);
-    } catch (err) {
-      console.error("Failed to fetch token balance:", err);
-      setTokenBalance("0");
-    }
+      setTokenBalance(formatEther(typeof result === "bigint" ? result : BigInt(result as string)));
+    } catch { setTokenBalance("0"); }
   }, [selectedMultisig, publicClient]);
 
-  // Fetch token balance on mount
-  useEffect(() => {
-    fetchBalance();
-  }, [fetchBalance]);
+  useEffect(() => { fetchBalance(); }, [fetchBalance]);
 
-  // Parse transaction receipt and refresh balance when confirmed
+  const fetchTxDetails = useCallback(async (txId: string) => {
+    if (!selectedMultisig || !publicClient) return;
+    try {
+      const result = await publicClient.readContract({
+        address: selectedMultisig.wallet, abi: MULTISIG_WALLET_ABI,
+        functionName: "getTransaction", args: [BigInt(txId)],
+      });
+      const approvals = await publicClient.readContract({
+        address: selectedMultisig.wallet, abi: MULTISIG_WALLET_ABI,
+        functionName: "approvalCount", args: [BigInt(txId)],
+      });
+      setTxDetails({
+        target: result[0] as string, value: formatEther(result[2] as bigint),
+        data: result[1] as string, evaluated: result[5] as boolean, executed: result[4] as boolean,
+        requiredSigners: Number(result[6]), approvalCount: Number(approvals),
+        riskScore: Number(result[7]), checkResults: Number(result[8]),
+        storageRoot: result[10] as string,
+      });
+    } catch (err) { console.error("Failed to fetch tx details:", err); }
+  }, [selectedMultisig, publicClient]);
+
+  // Refresh tx details after submit confirms
   useEffect(() => {
     if (!isConfirmed || !hash || !publicClient || !selectedMultisig) return;
-    
-    const parseReceipt = async () => {
+    const update = async () => {
       try {
-        const receipt = await publicClient.getTransactionReceipt({ hash });
-        
-        // Refresh token balance after any transaction
-        fetchBalance();
-        
-        // For now, just use the transaction count - 1 as the ID
         const count = await publicClient.readContract({
-          address: selectedMultisig.wallet,
-          abi: MULTISIG_WALLET_ABI,
-          functionName: "txCount",
+          address: selectedMultisig.wallet, abi: MULTISIG_WALLET_ABI, functionName: "txCount",
         });
         const actualTxId = (count - 1n).toString();
         setSubmittedTxId(actualTxId);
-      } catch (err) {
-        console.error("Failed to parse transaction receipt:", err);
-      }
+        fetchTxDetails(actualTxId);
+        fetchBalance();
+      } catch (err) { console.error(err); }
     };
-    
-    parseReceipt();
-  }, [isConfirmed, hash, publicClient, selectedMultisig, fetchBalance]);
+    update();
+  }, [isConfirmed, hash, publicClient, selectedMultisig, fetchTxDetails, fetchBalance]);
 
-  // Poll for balance updates when on mint or erc20 tabs
+  // Poll for evaluation result when evaluator is processing
   useEffect(() => {
-    if (!selectedMultisig || !publicClient) return;
-    if (activeTab !== "mint" && activeTab !== "erc20") return;
-    
-    // Initial fetch with delay to ensure connection is ready
-    setTimeout(() => {
-      console.log("Initial balance fetch on tab change");
-      fetchBalance();
-    }, 100);
-    
-    // Poll every 3 seconds
-    const interval = setInterval(() => {
-      console.log("Polling balance update...");
-      fetchBalance();
-    }, 3000);
-    
-    return () => clearInterval(interval);
-  }, [activeTab, selectedMultisig, publicClient, fetchBalance]);
-
-  // Fetch TEE public key on mount
-  useEffect(() => {
-    const fetchKey = async () => {
-      try {
-        const key = await fetchTeePublicKey(TEE_PROXY_URL);
-        setTeePublicKey(key);
-      } catch (err) {
-        console.error("Failed to fetch TEE public key:", err);
-        setTeeError("Failed to fetch TEE public key. Make sure the TEE proxy is running.");
-      }
-    };
-    
-    fetchKey();
-  }, []);
-
-  // Poll for evaluation result when instruction ID is set
-  useEffect(() => {
-    if (!instructionId || teeStatus !== "polling") return;
-    
+    if (evalStatus !== "polling" || !submittedTxId || !selectedMultisig || !publicClient) return;
     const poll = async () => {
       try {
-        const result = await pollForEvaluationResult(TEE_PROXY_URL, instructionId, 30, 2000);
-        
-        if (result && result.data) {
-          const decoded = decodeEvaluationResult(result.data as `0x${string}`);
-          setEvaluationResult(decoded);
-          setTeeStatus("attesting");
-          
-          // Automatically submit the attested evaluation
-          if (submittedTxId) {
-            writeEvaluationAttested({
-              address: selectedMultisig!.wallet,
-              abi: MULTISIG_WALLET_ABI,
-              functionName: "submitEvaluationAttested",
-              args: [BigInt(submittedTxId), instructionId],
-            });
-          }
-        }
-      } catch (err) {
-        console.error("Polling failed:", err);
-        setTeeError(`Failed to get evaluation result: ${err}`);
-        setTeeStatus("error");
-      }
-    };
-    
-    poll();
-  }, [instructionId, teeStatus, submittedTxId, selectedMultisig, writeEvaluationAttested]);
-
-  // Handle TEE sendEvaluate transaction completion
-  useEffect(() => {
-    if (!isConfirmed || !hash || teeStatus !== "sending" || !publicClient) return;
-    
-    const handleTeeSendComplete = async () => {
-      try {
-        // Get the transaction details to extract the encrypted message
-        const tx = await publicClient.getTransaction({ hash });
-        
-        if (!tx) {
-          setTeeError("Failed to get transaction details");
-          setTeeStatus("error");
-          return;
-        }
-        
-        // Extract the encrypted message from the transaction input data
-        // The data format is: function selector (4 bytes) + encoded arguments
-        const txData = tx.input;
-        // sendEvaluate(bytes) function selector is 0x + first 4 bytes
-        // The argument is offset (32 bytes) + length (32 bytes) + data
-        
-        // Extract encrypted message from the transaction input
-        // skip 4 bytes (selector) + 32 bytes (offset) = 36 bytes = 72 hex chars + 0x = 74
-        const offsetHex = txData.slice(10, 74);
-        const offset = parseInt(offsetHex, 16);
-        // length is at position 36 + offset
-        const lengthPos = 36 + offset * 2; // *2 because hex
-        const lengthHex = txData.slice(lengthPos, lengthPos + 64);
-        const length = parseInt(lengthHex, 16);
-        // data starts after length
-        const dataStart = lengthPos + 64;
-        const encryptedMessage = txData.slice(dataStart, dataStart + length * 2) as `0x${string}`;
-        
-        // Get the transaction receipt to extract the instructionId from event logs
-        const receipt = await publicClient.getTransactionReceipt({ hash });
-        
-        console.log("Transaction receipt:", {
-          blockNumber: receipt.blockNumber.toString(),
-          logs: receipt.logs.length,
+        const result = await publicClient.readContract({
+          address: selectedMultisig.wallet, abi: MULTISIG_WALLET_ABI,
+          functionName: "getTransaction", args: [BigInt(submittedTxId)],
         });
-        
-        // Extract instructionId from TeeInstructionsSent event
-        // Event signature: TeeInstructionsSent(bytes32 indexed instructionId, address indexed sender, bytes32 indexed opType, uint256 timestamp)
-        // Topics: [eventSig, instructionId, sender, opType]
-        let instructionId: `0x${string}` | null = null;
-        
-        if (receipt.logs.length > 0) {
-          console.log("Parsing receipt logs...");
-          
-          for (const log of receipt.logs) {
-            console.log("  Log:", {
-              address: log.address,
-              topics: log.topics,
-              data: log.data.slice(0, 100),
-            });
-            
-            // TeeInstructionsSent event has 4 topics: event signature + 3 indexed params
-            if (log.topics.length >= 3) {
-              // instructionId is topics[1] (first indexed param after event signature)
-              instructionId = log.topics[1] as `0x${string}`;
-              console.log("  Found instructionId in log:", instructionId);
-              break;
-            }
-          }
+        if (result[5] as boolean) {
+          setEvalStatus("complete");
+          fetchTxDetails(submittedTxId);
         }
-        
-        if (!instructionId) {
-          // Fallback: try to compute it for backwards compatibility with old mock
-          console.warn("No TeeInstructionsSent event found, falling back to computation");
-          
-          // Get the block to get the timestamp used in the transaction
-          const block = await publicClient.getBlock({ blockNumber: receipt.blockNumber });
-          const timestamp = block.timestamp;
-          
-          // Compute instructionId: keccak256(abi.encodePacked(opType, opCommand, message, timestamp))
-          const opTypeBytes32 = stringToHex("EVALUATE_RISK", { size: 32 });
-          const opCommandBytes32 = stringToHex("", { size: 32 });
-          
-          // encodePacked matches Solidity's abi.encodePacked
-          const packed = encodePacked(
-            ['bytes32', 'bytes32', 'bytes', 'uint256'],
-            [opTypeBytes32, opCommandBytes32, encryptedMessage, timestamp]
-          );
-          
-          // Compute keccak256
-          instructionId = keccak256(packed);
-          
-          console.log("  Computed instructionId (fallback):", instructionId);
-        }
-        
-        console.log("  Using instructionId:", instructionId);
-        console.log("  Querying TEE proxy for result...");
-        
-        // Before setting the ID and polling, let's try to fetch the result once to see if it exists
-        const testResponse = await fetch(`${TEE_PROXY_URL}/action/result/${instructionId}`);
-        console.log("  Test fetch result:", testResponse.status, testResponse.status === 200 ? "Found!" : "Not found");
-        
-        if (testResponse.status === 404) {
-          // TEE result not found
-          console.warn("TEE evaluation not found at proxy");
-          setTeeError(
-            "TEE evaluation unavailable: Result not found at proxy. " +
-            "Please use the 'Mock Evaluation (Skip TEE)' button below instead."
-          );
-          setTeeStatus("error");
-          return;
-        }
-        
-        setInstructionId(instructionId);
-        setTeeStatus("polling");
-      } catch (err) {
-        console.error("Failed to process TEE send completion:", err);
-        setTeeError(`Failed to process TEE response: ${err}`);
-        setTeeStatus("error");
-      }
+      } catch { /* retry */ }
     };
-    
-    handleTeeSendComplete();
-  }, [isConfirmed, hash, teeStatus, publicClient]);
+    const interval = setInterval(poll, 3000);
+    return () => clearInterval(interval);
+  }, [evalStatus, submittedTxId, selectedMultisig, publicClient, fetchTxDetails]);
 
-  const handleSubmitScenario = async (scenario: typeof TEST_SCENARIOS[0]) => {
-    if (!selectedMultisig || !address || !teePublicKey) return;
-    
+  // When gateway tx confirms, start polling for evaluation
+  useEffect(() => {
+    if (isGatewayConfirmed && evalStatus === "sending") {
+      setEvalStatus("polling");
+    }
+  }, [isGatewayConfirmed, evalStatus]);
+
+  useEffect(() => {
+    if (txIdFromUrl && selectedMultisig && publicClient) {
+      setActiveTab("evaluate");
+      fetchTxDetails(txIdFromUrl);
+    }
+  }, [txIdFromUrl, selectedMultisig, publicClient, fetchTxDetails]);
+
+  const handleSubmitScenario = (scenario: typeof TEST_SCENARIOS[0]) => {
+    if (!selectedMultisig || !address) return;
     const nonce = BigInt(Date.now());
-    const txId = nonce.toString();
-    setTxNonce(txId);
     setSelectedScenario(scenario.id);
-    setTeeError(null);
-    
+    setEvalError(null);
+    setEvalStatus("idle");
     const transferData = encodeFunctionData({
-      abi: ERC20_ABI,
-      functionName: "transfer",
+      abi: ERC20_ABI, functionName: "transfer",
       args: [address, parseUnits(scenario.tokenValue, 18)],
     });
-    
-    // Step 1: Submit transaction to MultisigWallet
-    setSubmittedTxId(txId);
-    
+    setSubmittedTxId(null);
     writeContract({
-      address: selectedMultisig.wallet,
-      abi: MULTISIG_WALLET_ABI,
-      functionName: "submitTransaction",
-      args: [CONTRACTS.testToken, transferData, nonce],
-      value: 0n,
+      address: selectedMultisig.wallet, abi: MULTISIG_WALLET_ABI,
+      functionName: "submitTransaction", args: [CONTRACTS.testToken, transferData, nonce], value: 0n,
     });
   };
 
-  // Start TEE evaluation after transaction is confirmed
-  const startTeeEvaluation = async () => {
-    if (!selectedMultisig || !address || !teePublicKey || !submittedTxId) return;
-    
-    setTeeStatus("encrypting");
-    setTeeError(null);
-    
+  const startEvaluation = async () => {
+    if (!selectedMultisig || !address || !submittedTxId || !publicClient) return;
+    setEvalStatus("encrypting");
+    setEvalError(null);
     try {
-      // Get transaction details
-      const txResult = await publicClient!.readContract({
-        address: selectedMultisig.wallet,
-        abi: MULTISIG_WALLET_ABI,
-        functionName: "getTransaction",
-        args: [BigInt(submittedTxId)],
+      const txResult = await publicClient.readContract({
+        address: selectedMultisig.wallet, abi: MULTISIG_WALLET_ABI,
+        functionName: "getTransaction", args: [BigInt(submittedTxId)],
       });
-      
-      const target = txResult[0] as Address;
-      const calldata = txResult[1] as `0x${string}`;
-      const value = txResult[2] as bigint;
-      const nonce = txResult[3] as bigint;
-      
-      // Create EvaluateRequest
       const request: EvaluateRequest = {
-        target,
-        calldata,
-        value,
-        sender: address,
-        nonce,
+        target: txResult[0] as Address, calldata: txResult[1] as `0x${string}`,
+        value: txResult[2] as bigint, sender: address, nonce: txResult[3] as bigint,
       };
-      
-      // Encrypt the request
-      const encryptedMessage = encryptEvaluateRequest(teePublicKey, request);
-      
-      setTeeStatus("sending");
-      
-      // Send to InstructionSender
-      writeContract({
-        address: CONTRACTS.instructionSender,
-        abi: INSTRUCTION_SENDER_ABI,
-        functionName: "sendEvaluate",
-        args: [encryptedMessage],
-        value: 2000n, // TEE fee
+      const evaluatorPubKey = getEvaluatorPublicKey();
+      const encryptedMessage = encryptEvaluateRequest(evaluatorPubKey, request);
+      setEvalStatus("sending");
+      writeGateway({
+        address: CONTRACTS.evaluationGateway, abi: EVALUATION_GATEWAY_ABI,
+        functionName: "sendEvaluate", args: [encryptedMessage], value: 0n,
       });
     } catch (err) {
-      console.error("TEE evaluation failed:", err);
-      setTeeError(`TEE evaluation failed: ${err}`);
-      setTeeStatus("error");
+      console.error("Evaluation failed:", err);
+      setEvalError(`Evaluation failed: ${err}`);
+      setEvalStatus("error");
     }
   };
 
   const handleSubmitErc20 = () => {
     if (!selectedMultisig || !erc20Target || !erc20Amount) return;
-    
     const nonce = BigInt(Date.now());
-    setTxNonce(nonce.toString());
-    
     const transferData = encodeFunctionData({
-      abi: ERC20_ABI,
-      functionName: "transfer",
+      abi: ERC20_ABI, functionName: "transfer",
       args: [erc20Target as `0x${string}`, parseUnits(erc20Amount, 18)],
     });
-    
     writeContract({
-      address: selectedMultisig.wallet,
-      abi: MULTISIG_WALLET_ABI,
-      functionName: "submitTransaction",
-      args: [CONTRACTS.testToken, transferData, nonce],
-      value: 0n,
+      address: selectedMultisig.wallet, abi: MULTISIG_WALLET_ABI,
+      functionName: "submitTransaction", args: [CONTRACTS.testToken, transferData, nonce], value: 0n,
     });
   };
 
   const handleMintToMultisig = () => {
     if (!selectedMultisig) return;
-    
-    writeContract({
-      address: CONTRACTS.testToken,
-      abi: ERC20_ABI,
-      functionName: "mint",
-      args: [selectedMultisig.wallet, 100000n],
-    });
+    writeContract({ address: CONTRACTS.testToken, abi: ERC20_ABI, functionName: "mint", args: [selectedMultisig.wallet, 100000n] });
   };
 
   const handleSubmitCustom = () => {
     if (!selectedMultisig || !customTarget || !customValue) return;
-    
     const nonce = BigInt(Date.now());
-    setTxNonce(nonce.toString());
-    
     writeContract({
-      address: selectedMultisig.wallet,
-      abi: MULTISIG_WALLET_ABI,
+      address: selectedMultisig.wallet, abi: MULTISIG_WALLET_ABI,
       functionName: "submitTransaction",
       args: [customTarget as `0x${string}`, customData as `0x${string}`, nonce],
       value: parseEther(customValue),
     });
   };
 
-  const handleApproveTx = async () => {
+  const handleApproveTx = () => {
     if (!selectedMultisig || !submittedTxId) return;
-    
-    writeContract({
-      address: selectedMultisig.wallet,
-      abi: MULTISIG_WALLET_ABI,
-      functionName: "approveTx",
-      args: [BigInt(submittedTxId)],
-    });
+    writeContract({ address: selectedMultisig.wallet, abi: MULTISIG_WALLET_ABI, functionName: "approveTx", args: [BigInt(submittedTxId)] });
   };
 
-  const handleExecuteTx = async () => {
+  const handleExecuteTx = () => {
     if (!selectedMultisig || !submittedTxId) return;
-    
-    writeContract({
-      address: selectedMultisig.wallet,
-      abi: MULTISIG_WALLET_ABI,
-      functionName: "executeTx",
-      args: [BigInt(submittedTxId)],
-    });
+    writeContract({ address: selectedMultisig.wallet, abi: MULTISIG_WALLET_ABI, functionName: "executeTx", args: [BigInt(submittedTxId)] });
   };
-
-  const handleMockEvaluation = async () => {
-    if (!selectedMultisig || !submittedTxId || !address || !publicClient) return;
-    
-    // Use selected scenario or default to scenario 0 (Low Risk)
-    const scenario = TEST_SCENARIOS[selectedScenario ?? 0];
-    
-    // Fetch the policy to get the actual signers
-    try {
-      const policy = await publicClient.readContract({
-        address: selectedMultisig.policyRegistry,
-        abi: POLICY_REGISTRY_ABI,
-        functionName: "getPolicy",
-        args: [BigInt(scenario.policyId)],
-      });
-      
-      // Use the policy's signers instead of just the connected address
-      const policySigners = policy.signers as Address[];
-      
-      // Generate synthetic check results bitmap (all checks pass for simplicity)
-      const checkResults = 0b1111111111; // All 10 checks pass
-      
-      console.log("Using policy signers for mock evaluation:", policySigners);
-      
-      writeMockEvaluation({
-        address: selectedMultisig.wallet,
-        abi: MULTISIG_WALLET_ABI,
-        functionName: "submitEvaluation",
-        args: [
-          BigInt(submittedTxId),
-          scenario.expectedRiskScore,
-          checkResults,
-          BigInt(scenario.policyId),
-          scenario.expectedRequiredSigners,
-          policySigners,
-        ],
-      });
-    } catch (err) {
-      console.error("Failed to fetch policy signers:", err);
-      // Fallback to just the connected address if policy fetch fails
-      const checkResults = 0b1111111111;
-      writeMockEvaluation({
-        address: selectedMultisig.wallet,
-        abi: MULTISIG_WALLET_ABI,
-        functionName: "submitEvaluation",
-        args: [
-          BigInt(submittedTxId),
-          scenario.expectedRiskScore,
-          checkResults,
-          BigInt(scenario.policyId),
-          scenario.expectedRequiredSigners,
-          [address],
-        ],
-      });
-    }
-  };
-
-  const fetchTxDetails = useCallback(async (txId: string) => {
-    if (!selectedMultisig || !publicClient) return;
-    
-    try {
-      const result = await publicClient.readContract({
-        address: selectedMultisig.wallet,
-        abi: MULTISIG_WALLET_ABI,
-        functionName: "getTransaction",
-        args: [BigInt(txId)],
-      });
-      
-      // Fetch approval count
-      const approvalCount = await publicClient.readContract({
-        address: selectedMultisig.wallet,
-        abi: MULTISIG_WALLET_ABI,
-        functionName: "approvalCount",
-        args: [BigInt(txId)],
-      });
-      
-      setTxDetails({
-        target: result[0],
-        value: formatEther(result[2]),
-        data: result[1],
-        evaluated: result[5],
-        executed: result[4],
-        requiredSigners: Number(result[6]),
-        approvalCount: Number(approvalCount),
-        riskScore: Number(result[7]),
-      });
-    } catch (err) {
-      console.error("Failed to fetch tx details:", err);
-    }
-  }, [selectedMultisig, publicClient]);
-
-  // Auto-switch to TEE tab and fetch details when coming from Pending page with tx ID
-  useEffect(() => {
-    if (txIdFromUrl && selectedMultisig && publicClient) {
-      setActiveTab("tee");
-      fetchTxDetails(txIdFromUrl);
-    }
-  }, [txIdFromUrl, selectedMultisig, publicClient]);
 
   if (!hasSelection) {
     return (
       <div className="text-center py-20">
         <h2 className="text-2xl font-bold mb-4">No Multisig Selected</h2>
-        <p className="text-[var(--text-secondary)] mb-6">
-          Please select a multisig wallet to test transactions
-        </p>
-        <Link to="/" className="btn btn-primary">
-          Go to Home
-        </Link>
+        <p className="text-[var(--text-secondary)] mb-6">Please select a multisig wallet to test transactions</p>
+        <Link to="/" className="btn btn-primary">Go to Home</Link>
       </div>
     );
   }
+
+  const evalButtonText = () => {
+    if (!submittedTxId) return "Submit Transaction First";
+    switch (evalStatus) {
+      case "encrypting": return "Encrypting...";
+      case "sending": return "Sending to Gateway...";
+      case "polling": return "Evaluator Processing...";
+      case "complete": return "Evaluation Complete";
+      case "error": return "Error - Try Again";
+      default: return "Start Evaluation";
+    }
+  };
 
   return (
     <div className="max-w-4xl mx-auto">
       <div className="flex items-center justify-between mb-2">
         <h1 className="text-2xl font-bold">Test Transactions</h1>
-        <Link
-          to="/pending"
-          className="px-4 py-2 bg-[var(--bg-card)] border border-[var(--border)] rounded-md hover:bg-[var(--border)] text-sm"
-        >
-          View Pending →
-        </Link>
+        <Link to="/pending" className="px-4 py-2 bg-[var(--bg-card)] border border-[var(--border)] rounded-md hover:bg-[var(--border)] text-sm">View Pending →</Link>
       </div>
-      <p className="text-[var(--text-secondary)] mb-2">
-        Testing wallet: <CopyableAddress address={selectedMultisig!.wallet} />
-      </p>
+      <p className="text-[var(--text-secondary)] mb-2">Wallet: <CopyableAddress address={selectedMultisig!.wallet} /></p>
       <div className="flex items-center gap-4 mb-6">
         <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-md px-3 py-1.5 flex items-center gap-2">
-          <span className="text-xs text-[var(--text-secondary)]">USDC Balance: </span>
-          <span className="text-sm font-mono font-medium">{tokenBalance} USDC</span>
-          <button 
-            onClick={fetchBalance}
-            className="text-xs text-[var(--accent)] hover:text-[var(--text-primary)] ml-2"
-            title="Refresh balance"
-          >
-            ↻
-          </button>
+          <span className="text-xs text-[var(--text-secondary)]">USDC:</span>
+          <span className="text-sm font-mono font-medium">{tokenBalance}</span>
+          <button onClick={fetchBalance} className="text-xs text-[var(--accent)] hover:text-[var(--text-primary)] ml-2">↻</button>
         </div>
-        <div className="text-xs text-[var(--text-secondary)]">
-          Token: <CopyableAddress address={CONTRACTS.testToken} />
-        </div>
-        {teePublicKey && (
-          <div className="bg-[var(--green)] bg-opacity-10 border border-[var(--green)] rounded-md px-3 py-1.5">
-            <span className="text-xs text-black">TEE Connected</span>
-          </div>
-        )}
       </div>
 
       <div className="flex gap-2 mb-6 flex-wrap">
-        <button
-          onClick={() => setActiveTab("scenarios")}
-          className={`px-4 py-2 rounded-md font-medium transition-colors ${
-            activeTab === "scenarios"
-              ? "bg-[var(--accent)] text-black"
-              : "bg-[var(--bg-card)] text-[var(--text-primary)] hover:bg-[var(--border)]"
-          }`}
-        >
-          Test Scenarios
-        </button>
-        <button
-          onClick={() => setActiveTab("tee")}
-          className={`px-4 py-2 rounded-md font-medium transition-colors ${
-            activeTab === "tee"
-              ? "bg-[var(--accent)] text-black"
-              : "bg-[var(--bg-card)] text-[var(--text-primary)] hover:bg-[var(--border)]"
-          }`}
-        >
-          TEE Evaluation
-        </button>
-        <button
-          onClick={() => setActiveTab("erc20")}
-          className={`px-4 py-2 rounded-md font-medium transition-colors ${
-            activeTab === "erc20"
-              ? "bg-[var(--accent)] text-black"
-              : "bg-[var(--bg-card)] text-[var(--text-primary)] hover:bg-[var(--border)]"
-          }`}
-        >
-          ERC20 Transfer
-        </button>
-        <button
-          onClick={() => setActiveTab("mint")}
-          className={`px-4 py-2 rounded-md font-medium transition-colors ${
-            activeTab === "mint"
-              ? "bg-[var(--accent)] text-black"
-              : "bg-[var(--bg-card)] text-[var(--text-primary)] hover:bg-[var(--border)]"
-          }`}
-        >
-          Mint Tokens
-        </button>
-        <button
-          onClick={() => setActiveTab("custom")}
-          className={`px-4 py-2 rounded-md font-medium transition-colors ${
-            activeTab === "custom"
-              ? "bg-[var(--accent)] text-black"
-              : "bg-[var(--bg-card)] text-[var(--text-primary)] hover:bg-[var(--border)]"
-          }`}
-        >
-          Custom Transaction
-        </button>
+        {(["scenarios", "evaluate", "erc20", "mint", "custom"] as const).map((tab) => (
+          <button key={tab} onClick={() => setActiveTab(tab)}
+            className={`px-4 py-2 rounded-md font-medium transition-colors capitalize ${activeTab === tab ? "bg-[var(--accent)] text-black" : "bg-[var(--bg-card)] hover:bg-[var(--border)]"}`}>
+            {tab === "erc20" ? "ERC20 Transfer" : tab}
+          </button>
+        ))}
       </div>
 
       {activeTab === "scenarios" && (
         <div className="space-y-4">
           {TEST_SCENARIOS.map((scenario) => (
-            <div
-              key={scenario.id}
-              className={`bg-[var(--bg-card)] border rounded-lg p-5 transition-all ${
-                selectedScenario === scenario.id
-                  ? "border-[var(--accent)]"
-                  : "border-[var(--border)] hover:border-[var(--text-secondary)]"
-              }`}
-            >
+            <div key={scenario.id} className={`bg-[var(--bg-card)] border rounded-lg p-5 ${selectedScenario === scenario.id ? "border-[var(--accent)]" : "border-[var(--border)]"}`}>
               <div className="flex items-start justify-between mb-3">
                 <div>
                   <h3 className="font-semibold text-lg">{scenario.name}</h3>
-                  <p className="text-sm text-[var(--text-secondary)] mt-1">
-                    {scenario.description}
-                  </p>
-                </div>
-                <div
-                  className="px-3 py-1 rounded-full text-sm font-medium"
-                  style={{
-                    backgroundColor: `${riskColor(scenario.expectedRiskScore)}20`,
-                    color: riskColor(scenario.expectedRiskScore),
-                  }}
-                >
-                  {riskLabel(scenario.expectedRiskScore)} Risk
+                  <p className="text-sm text-[var(--text-secondary)] mt-1">{scenario.description}</p>
                 </div>
               </div>
-
-              <div className="grid grid-cols-3 gap-4 mb-4 text-sm">
-                <div className="bg-[var(--bg-secondary)] rounded-md p-3">
-                  <div className="text-[var(--text-secondary)] mb-1">Value</div>
-                  <div className="font-mono">
-                    {`${Number(scenario.tokenValue).toLocaleString()} USDC`}
-                  </div>
-                </div>
-                <div className="bg-[var(--bg-secondary)] rounded-md p-3">
-                  <div className="text-[var(--text-secondary)] mb-1">Expected Policy</div>
-                  <div className="font-mono">ID {scenario.policyId}</div>
-                </div>
-                <div className="bg-[var(--bg-secondary)] rounded-md p-3">
-                  <div className="text-[var(--text-secondary)] mb-1">Expected Signers</div>
-                  <div className="font-mono">{scenario.expectedRequiredSigners}</div>
-                </div>
-              </div>
-
-              <div className="flex gap-2">
-                <button
-                  onClick={() => handleSubmitScenario(scenario)}
-                  disabled={isPending || isConfirming || !teePublicKey}
-                  className="flex-1 px-4 py-2 bg-[var(--accent)] text-black rounded-md hover:opacity-80 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {isPending ? "Submitting..." : isConfirming ? "Confirming..." : "Submit Transaction"}
-                </button>
-              </div>
+              <div className="text-sm mb-4 text-[var(--text-secondary)]">{Number(scenario.tokenValue).toLocaleString()} USDC</div>
+              <button onClick={() => handleSubmitScenario(scenario)} disabled={isPending || isConfirming}
+                className="w-full px-4 py-2 bg-[var(--accent)] text-black rounded-md hover:opacity-80 disabled:opacity-50">
+                {isPending ? "Submitting..." : isConfirming ? "Confirming..." : "Submit Transaction"}
+              </button>
             </div>
           ))}
         </div>
       )}
 
-      {activeTab === "tee" && (
+      {activeTab === "evaluate" && (
         <div className="space-y-4">
           <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-lg p-6">
-            <h3 className="font-semibold text-lg mb-4">TEE Policy Evaluation</h3>
-            
-            {teeError && (
+            <h3 className="font-semibold text-lg mb-4">0G Compute Evaluation</h3>
+
+            {evalError && (
               <div className="bg-[var(--red)] bg-opacity-10 border border-[var(--red)] rounded-md p-4 mb-4">
-                <p className="text-[var(--red)] text-sm">{teeError}</p>
+                <p className="text-[var(--red)] text-sm">{evalError}</p>
               </div>
             )}
 
-            <div className="space-y-4">
-              <div className="bg-[var(--bg-secondary)] rounded-md p-4">
-                <h4 className="font-medium mb-2">Step 1: Submit Transaction</h4>
-                <p className="text-sm text-[var(--text-secondary)] mb-3">
-                  First, submit a transaction using the Test Scenarios or Custom Transaction tabs.
-                </p>
-                {submittedTxId ? (
-                  <div className="bg-[var(--green)] bg-opacity-10 border border-[var(--green)] rounded-md p-3">
-                    <p className="text-sm text-black">
-                      Transaction submitted: ID {submittedTxId}
-                    </p>
-                  </div>
-                ) : (
-                  <p className="text-sm text-[var(--text-secondary)]">
-                    No transaction submitted yet. Go to Test Scenarios tab first.
-                  </p>
-                )}
+            {submittedTxId ? (
+              <div className="bg-[var(--green)] bg-opacity-10 border border-[var(--green)] rounded-md p-3 mb-4">
+                <p className="text-sm">Transaction ID: {submittedTxId}</p>
               </div>
+            ) : (
+              <p className="text-sm text-[var(--text-secondary)] mb-4">Submit a transaction from the Test Scenarios tab first.</p>
+            )}
 
+            <button onClick={startEvaluation}
+              disabled={!submittedTxId || evalStatus === "encrypting" || evalStatus === "sending" || evalStatus === "polling" || isGatewayPending}
+              className="w-full px-4 py-2 bg-[var(--accent)] text-black rounded-md hover:opacity-80 disabled:opacity-50 mb-4">
+              {isGatewayPending ? "Confirming..." : isGatewayConfirming ? "Confirming..." : evalButtonText()}
+            </button>
+
+            {evalStatus === "polling" && (
+              <p className="text-sm text-[var(--text-secondary)] text-center mb-4">
+                Evaluator service is processing via 0G Compute... (polling on-chain)
+              </p>
+            )}
+
+            {txDetails?.evaluated && (
               <div className="bg-[var(--bg-secondary)] rounded-md p-4">
-                <h4 className="font-medium mb-2">Step 2: TEE Evaluation</h4>
-                <p className="text-sm text-[var(--text-secondary)] mb-3">
-                  The TEE will evaluate the transaction against active policies and determine the required signers.
-                </p>
-                
-                {!teePublicKey && (
-                  <p className="text-sm text-[var(--red)] mb-2">
-                    TEE not connected. Make sure the TEE proxy is running at {TEE_PROXY_URL}
-                  </p>
-                )}
-
-                <button
-                  onClick={startTeeEvaluation}
-                  disabled={!submittedTxId || !teePublicKey || teeStatus !== "idle" || isPending}
-                  className="w-full px-4 py-2 bg-[var(--accent)] text-black rounded-md hover:opacity-80 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {!teePublicKey 
-                    ? "TEE Not Connected" 
-                    : !submittedTxId 
-                      ? "Submit Transaction First"
-                      : teeStatus === "idle"
-                        ? "Start TEE Evaluation"
-                        : teeStatus === "encrypting"
-                          ? "Encrypting..."
-                          : teeStatus === "sending"
-                            ? "Sending to TEE..."
-                            : teeStatus === "polling"
-                              ? "Waiting for TEE..."
-                              : teeStatus === "attesting"
-                                ? "Submitting Attestation..."
-                                : teeStatus === "complete"
-                                  ? "Evaluation Complete"
-                                  : "Error - Try Again"
-                  }
-                </button>
-
-                <div className="mt-3 pt-3 border-t border-[var(--border)]">
-                  <p className="text-xs text-[var(--text-secondary)] mb-2">
-                    TEE not working? Use mock evaluation to bypass:
-                  </p>
-                  <button
-                    onClick={handleMockEvaluation}
-                    disabled={!submittedTxId || isMockEvalPending}
-                    className="w-full px-4 py-2 bg-[var(--bg-card)] border border-[var(--orange)] text-[var(--orange)] rounded-md hover:bg-[var(--orange)] hover:text-black disabled:opacity-50 disabled:cursor-not-allowed text-sm"
-                  >
-                    {isMockEvalPending 
-                      ? "Submitting Mock Eval..." 
-                      : isMockEvalConfirming 
-                        ? "Confirming..." 
-                        : "Mock Evaluation (Skip TEE)"}
-                  </button>
-                  {isMockEvalConfirmed && (
-                    <p className="text-xs text-[var(--green)] mt-2">
-                      Mock evaluation submitted! Transaction is now evaluated and ready for approval.
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              {evaluationResult && (
-                <div className="bg-[var(--bg-secondary)] rounded-md p-4">
-                  <h4 className="font-medium mb-3">Evaluation Result</h4>
-                  
-                  <div className="grid grid-cols-2 gap-4 mb-4">
-                    <div className="bg-[var(--bg-card)] rounded-md p-3">
-                      <div className="text-xs text-[var(--text-secondary)] mb-1">Risk Score</div>
-                      <div 
-                        className="font-mono text-lg font-medium"
-                        style={{ color: riskColor(evaluationResult.decision.riskScore) }}
-                      >
-                        {evaluationResult.decision.riskScore}/100
-                      </div>
-                    </div>
-                    <div className="bg-[var(--bg-card)] rounded-md p-3">
-                      <div className="text-xs text-[var(--text-secondary)] mb-1">Required Signers</div>
-                      <div className="font-mono text-lg font-medium">
-                        {evaluationResult.decision.requiredSigners} of {evaluationResult.decision.totalSigners}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="bg-[var(--bg-card)] rounded-md p-3 mb-3">
-                    <div className="text-xs text-[var(--text-secondary)] mb-1">Matched Policy</div>
-                    <div className="font-mono text-sm">
-                      ID {evaluationResult.decision.matchedPolicyId.toString()}: {evaluationResult.decision.policyName}
-                    </div>
-                  </div>
-
+                <h4 className="font-medium mb-3">Evaluation Result</h4>
+                <div className="grid grid-cols-2 gap-4 mb-4">
                   <div className="bg-[var(--bg-card)] rounded-md p-3">
-                    <div className="text-xs text-[var(--text-secondary)] mb-2">Check Results</div>
-                    <div className="grid grid-cols-2 gap-1 text-xs">
-                      {decodeCheckResults(evaluationResult.decision.checkResults).map((check) => (
-                        <div 
-                          key={check.bit}
-                          className={`flex items-center gap-1 ${check.pass ? 'text-[var(--green)]' : 'text-[var(--red)]'}`}
-                        >
-                          <span>{check.pass ? '✓' : '✗'}</span>
-                          <span>{check.label}</span>
-                        </div>
-                      ))}
-                    </div>
+                    <div className="text-xs text-[var(--text-secondary)] mb-1">Risk Score</div>
+                    <div className="font-mono text-lg" style={{ color: riskColor(txDetails.riskScore) }}>{txDetails.riskScore}/100</div>
+                  </div>
+                  <div className="bg-[var(--bg-card)] rounded-md p-3">
+                    <div className="text-xs text-[var(--text-secondary)] mb-1">Signers Required</div>
+                    <div className="font-mono text-lg">{txDetails.requiredSigners}</div>
                   </div>
                 </div>
-              )}
-            </div>
+                {txDetails.storageRoot && txDetails.storageRoot !== "0x0000000000000000000000000000000000000000000000000000000000000000" && (
+                  <div className="bg-[var(--bg-card)] rounded-md p-3 mb-3">
+                    <div className="text-xs text-[var(--text-secondary)] mb-1">0G Storage Root</div>
+                    <div className="font-mono text-xs break-all">{txDetails.storageRoot}</div>
+                  </div>
+                )}
+                <div className="bg-[var(--bg-card)] rounded-md p-3">
+                  <div className="text-xs text-[var(--text-secondary)] mb-2">Check Results</div>
+                  <div className="grid grid-cols-2 gap-1 text-xs">
+                    {decodeCheckResults(txDetails.checkResults).map((check) => (
+                      <div key={check.bit} className={`flex items-center gap-1 ${check.pass ? "text-[var(--green)]" : "text-[var(--red)]"}`}>
+                        <span>{check.pass ? "✓" : "✗"}</span><span>{check.label}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {txDetails?.evaluated && !txDetails.executed && (
+              <div className="flex gap-2 mt-4">
+                <button onClick={handleApproveTx} disabled={isPending}
+                  className="flex-1 px-4 py-2 bg-[var(--bg-card)] border border-[var(--border)] rounded-md hover:bg-[var(--border)]">
+                  Approve ({txDetails.approvalCount}/{txDetails.requiredSigners})
+                </button>
+                <button onClick={handleExecuteTx} disabled={isPending || txDetails.approvalCount < txDetails.requiredSigners}
+                  className="flex-1 px-4 py-2 bg-[var(--accent)] text-black rounded-md hover:opacity-80 disabled:opacity-50">
+                  Execute
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
 
       {activeTab === "erc20" && (
         <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-lg p-6">
-          <h3 className="font-semibold text-lg mb-4">ERC20 Token Transfer (USDC)</h3>
-          
+          <h3 className="font-semibold text-lg mb-4">ERC20 Token Transfer</h3>
           <div className="space-y-4">
             <div className="bg-[var(--bg-secondary)] rounded-md p-3 mb-4">
-              <div className="text-xs text-[var(--text-secondary)] mb-1">Wallet USDC Balance</div>
+              <div className="text-xs text-[var(--text-secondary)] mb-1">Wallet Balance</div>
               <div className="font-mono text-lg">{tokenBalance} USDC</div>
             </div>
-
-            <div>
-              <label className="block text-sm font-medium mb-1">Recipient Address</label>
-              <input
-                type="text"
-                value={erc20Target}
-                onChange={(e) => setErc20Target(e.target.value)}
-                placeholder="0x..."
-                className="w-full px-3 py-2 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-md text-[var(--text-primary)] font-mono"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium mb-1">Amount (USDC)</label>
-              <input
-                type="text"
-                value={erc20Amount}
-                onChange={(e) => setErc20Amount(e.target.value)}
-                placeholder="10000"
-                className="w-full px-3 py-2 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-md text-[var(--text-primary)]"
-              />
-              <p className="text-xs text-[var(--text-secondary)] mt-1">
-                Enter amount in USDC (18 decimals). Large amounts trigger high-value policies.
-              </p>
-            </div>
-
-            <div className="grid grid-cols-4 gap-2">
-              {["1000", "10000", "100000", "1000000"].map((amount) => (
-                <button
-                  key={amount}
-                  onClick={() => setErc20Amount(amount)}
-                  className="px-3 py-2 bg-[var(--bg-secondary)] text-sm rounded-md hover:bg-[var(--border)] transition-colors"
-                >
-                  {Number(amount).toLocaleString()}
-                </button>
-              ))}
-            </div>
-
-            <button
-              onClick={handleSubmitErc20}
-              disabled={isPending || isConfirming || !erc20Target || !erc20Amount}
-              className="w-full px-4 py-2 bg-[var(--accent)] text-black rounded-md hover:opacity-80 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isPending ? "Submitting..." : isConfirming ? "Confirming..." : "Submit ERC20 Transfer"}
+            <input type="text" value={erc20Target} onChange={(e) => setErc20Target(e.target.value)} placeholder="Recipient 0x..."
+              className="w-full px-3 py-2 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-md font-mono" />
+            <input type="text" value={erc20Amount} onChange={(e) => setErc20Amount(e.target.value)} placeholder="Amount"
+              className="w-full px-3 py-2 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-md" />
+            <button onClick={handleSubmitErc20} disabled={isPending || !erc20Target || !erc20Amount}
+              className="w-full px-4 py-2 bg-[var(--accent)] text-black rounded-md hover:opacity-80 disabled:opacity-50">
+              {isPending ? "Submitting..." : "Submit"}
             </button>
           </div>
         </div>
@@ -983,76 +385,28 @@ export default function TestTransactionsPage() {
 
       {activeTab === "mint" && (
         <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-lg p-6">
-          <h3 className="font-semibold text-lg mb-4">Mint USDC to Multisig</h3>
-          
-          <div className="space-y-4">
-            <div className="bg-[var(--bg-secondary)] rounded-md p-3 mb-4">
-              <div className="text-xs text-[var(--text-secondary)] mb-1">Current Wallet USDC Balance</div>
-              <div className="font-mono text-lg">{tokenBalance} USDC</div>
-            </div>
-
-            <button
-              onClick={handleMintToMultisig}
-              disabled={isPending || isConfirming}
-              className="w-full px-4 py-2 bg-[var(--accent)] text-black rounded-md hover:opacity-80 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isPending ? "Minting..." : isConfirming ? "Confirming..." : "Mint 100,000 USDC"}
-            </button>
-
-            <p className="text-xs text-[var(--text-secondary)] text-center">
-              Note: Only the token owner (deployer) can mint new tokens
-            </p>
-          </div>
+          <h3 className="font-semibold text-lg mb-4">Mint USDC</h3>
+          <div className="text-sm mb-4">Balance: {tokenBalance} USDC</div>
+          <button onClick={handleMintToMultisig} disabled={isPending}
+            className="w-full px-4 py-2 bg-[var(--accent)] text-black rounded-md hover:opacity-80">
+            {isPending ? "Minting..." : "Mint 100,000 USDC"}
+          </button>
         </div>
       )}
 
       {activeTab === "custom" && (
         <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-lg p-6">
           <h3 className="font-semibold text-lg mb-4">Custom Transaction</h3>
-          
           <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium mb-1">Target Address</label>
-              <input
-                type="text"
-                value={customTarget}
-                onChange={(e) => setCustomTarget(e.target.value)}
-                placeholder="0x..."
-                className="w-full px-3 py-2 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-md text-[var(--text-primary)] font-mono"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium mb-1">Value (C2FLR)</label>
-              <input
-                type="text"
-                value={customValue}
-                onChange={(e) => setCustomValue(e.target.value)}
-                placeholder="0.001"
-                className="w-full px-3 py-2 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-md text-[var(--text-primary)]"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium mb-1">Calldata (hex)</label>
-              <input
-                type="text"
-                value={customData}
-                onChange={(e) => setCustomData(e.target.value)}
-                placeholder="0x..."
-                className="w-full px-3 py-2 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-md text-[var(--text-primary)] font-mono"
-              />
-              <p className="text-xs text-[var(--text-secondary)] mt-1">
-                Leave as 0x for simple transfers
-              </p>
-            </div>
-
-            <button
-              onClick={handleSubmitCustom}
-              disabled={isPending || isConfirming || !customTarget || !customValue}
-              className="w-full px-4 py-2 bg-[var(--accent)] text-black rounded-md hover:opacity-80 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isPending ? "Submitting..." : isConfirming ? "Confirming..." : "Submit Custom Transaction"}
+            <input type="text" value={customTarget} onChange={(e) => setCustomTarget(e.target.value)} placeholder="Target 0x..."
+              className="w-full px-3 py-2 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-md font-mono" />
+            <input type="text" value={customValue} onChange={(e) => setCustomValue(e.target.value)} placeholder="Value (0G)"
+              className="w-full px-3 py-2 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-md" />
+            <input type="text" value={customData} onChange={(e) => setCustomData(e.target.value)} placeholder="0x"
+              className="w-full px-3 py-2 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-md font-mono" />
+            <button onClick={handleSubmitCustom} disabled={isPending || !customTarget || !customValue}
+              className="w-full px-4 py-2 bg-[var(--accent)] text-black rounded-md hover:opacity-80 disabled:opacity-50">
+              {isPending ? "Submitting..." : "Submit"}
             </button>
           </div>
         </div>
@@ -1060,18 +414,15 @@ export default function TestTransactionsPage() {
 
       {hash && (
         <div className="mt-6 bg-[var(--bg-card)] border border-[var(--green)] rounded-lg p-4">
-          <h4 className="font-medium text-[var(--green)] mb-2">Transaction Submitted!</h4>
+          <h4 className="font-medium text-[var(--green)] mb-2">Transaction Submitted</h4>
           <div className="text-sm text-[var(--text-secondary)] break-all">{hash}</div>
-          {isConfirmed && (
-            <p className="text-sm text-[var(--green)] mt-2">Confirmed on-chain</p>
-          )}
+          {isConfirmed && <p className="text-sm text-[var(--green)] mt-2">Confirmed</p>}
         </div>
       )}
 
       {error && (
         <div className="mt-6 bg-[var(--bg-card)] border border-[var(--red)] rounded-lg p-4">
-          <h4 className="font-medium text-[var(--red)] mb-2">Error</h4>
-          <div className="text-sm text-[var(--text-secondary)]">{error.message}</div>
+          <div className="text-sm text-[var(--red)]">{error.message}</div>
         </div>
       )}
     </div>

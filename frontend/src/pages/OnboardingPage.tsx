@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAccount, useWriteContract, useWaitForTransactionReceipt, usePublicClient } from "wagmi";
 import { decodeEventLog, parseAbiItem } from "viem";
-import { FLARE_COSTON2_CHAIN, CONTRACTS, PRESET_DESCRIPTIONS, shortAddress, explorerUrl } from "../lib/constants";
+import { ZG_GALILEO_CHAIN, CONTRACTS, PRESET_DESCRIPTIONS, shortAddress, explorerUrl } from "../lib/constants";
 import { CopyableAddress } from "../components/CopyableAddress";
 import { WALLET_FACTORY_ABI } from "../lib/abi";
 
@@ -591,7 +591,7 @@ function DeployStep({
                     abi: WALLET_FACTORY_ABI,
                     functionName: "createWallet",
                     args: [signers, presetIds],
-                    chainId: FLARE_COSTON2_CHAIN.id,
+                    chainId: ZG_GALILEO_CHAIN.id,
                   },
                   {
                     onSuccess: () => {},
