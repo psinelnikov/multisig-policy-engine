@@ -8,8 +8,8 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/evaluator/index.js",
-    "dev": "tsx evaluator/index.ts",
-    "evaluator": "tsx evaluator/index.ts",
+    "dev": "node --env-file=.env --import tsx evaluator/index.ts",
+    "evaluator": "node --env-file=.env --import tsx evaluator/index.ts",
     "test": "vitest run"
   },
   "dependencies": {
