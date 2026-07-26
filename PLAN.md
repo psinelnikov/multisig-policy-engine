@@ -33,7 +33,7 @@ Baseline tag: `flare-baseline-2025-07-25` (35 Solidity tests, 37 TS tests passin
 - [x] Deploy.s.sol updated for EvaluationGateway + evaluatorSigner
 - [x] All 36 tests pass (was 35)
 ### 1c. Deploy script
-- [ ] Galileo deploy script (scripted, execution deferred — needs funded wallet)
+- [x] Galileo deploy script (Deploy.s.sol — executed on Galileo, all contracts deployed)
 ### 1d. Frontend chain config
 - [x] constants.ts: ZG_GALILEO_CHAIN
 - [x] wagmi.ts: Galileo chain
@@ -50,9 +50,6 @@ Baseline tag: `flare-baseline-2025-07-25` (35 Solidity tests, 37 TS tests passin
 - [x] Frontend TestTransactionsPage: submit via EvaluationGateway
 - [x] 37 TS tests pass, tsc clean
 
-## Phase 5 — Oracle replacement
-- [x] oracle.ts: CoinGecko zero-g/USD (done in Phase 2)
-
 ## Phase 3 — 0G Compute AI risk check
 - [x] app/checks/ai_analysis.ts
 - [x] simulation.ts: add check #10
@@ -64,9 +61,6 @@ Baseline tag: `flare-baseline-2025-07-25` (35 Solidity tests, 37 TS tests passin
 - [x] AuditLog storageRoot populated from upload
 - [x] evaluator/server.ts: receipt proxy endpoint
 - [x] AuditLogPage: fetch from storage proxy
-
-## Phase 5 — Oracle replacement
-- [x] oracle.ts: CoinGecko zero-g/USD
 
 ## Phase 7 — Submission artifacts
 - [x] README rewrite
@@ -83,5 +77,9 @@ Baseline tag: `flare-baseline-2025-07-25` (35 Solidity tests, 37 TS tests passin
   New: (txId, riskScore, checkResults, matchedPolicyId, requiredSigners, signers, storageRoot)
 
 ## Deployment status
-- Contracts: NOT YET DEPLOYED to Galileo (needs funded wallet + network)
-- Scripts prepared for manual execution
+- Contracts: DEPLOYED to 0G Galileo (chain 16602)
+- WalletFactory: 0x92b9ec884bb5eb1a35593c25d0d6c256d29e09eb
+- EvaluationGateway: 0xa8972c0dda532212de9354f80da0e8eec7c5028e
+- PresetPolicyRegistry: 0xabf02f8e145cfe36b7012b7b313fb39ea13b0842
+- Test wallet: 0xa44f5d655343173586015947e9c8f32efebd80da (4 preset policies, 1 signer)
+- End-to-end evaluation tested: riskScore=53, receipt uploaded to 0G Storage

@@ -37,10 +37,14 @@ export async function downloadReceipt(rootHash: string): Promise<object | null> 
     const { Indexer } = await import("@0gfoundation/0g-ts-sdk");
     const indexer = new Indexer(ZG_STORAGE_INDEXER_URL);
 
-    const data = await (indexer as any).downloadData(rootHash);
-    if (!data) return null;
+    const [blob, err] = await (indexer as any).downloadToBlob(rootHash);
+    if (err) {
+      console.error("[storage] Download error:", err);
+      return null;
+    }
+    if (!blob) return null;
 
-    const text = new TextDecoder().decode(data);
+    const text = await blob.text();
     return JSON.parse(text);
   } catch (err) {
     console.error("[storage] Download failed:", err instanceof Error ? err.message : err);
