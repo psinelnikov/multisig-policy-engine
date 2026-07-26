@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useReadContracts, useReadContract, useWriteContract, useAccount, useWaitForTransactionReceipt } from "wagmi";
-import { ZG_GALILEO_CHAIN, shortAddress, formatTimestamp } from "../lib/constants";
+import { ZG_GALILEO_CHAIN, shortAddress, formatTimestamp, GALILEO_GAS_PRICE } from "../lib/constants";
 import { CopyableAddress } from "../components/CopyableAddress";
 import { GOVERNANCE_MULTISIG_ABI, POLICY_REGISTRY_ABI } from "../lib/abi";
 import { encodeFunctionData, decodeFunctionData, type Hex } from "viem";
@@ -158,6 +158,7 @@ function ProposalRow({ proposal, totalSigners, userAddress, governanceAddress, p
                   functionName: "approve",
                   args: [proposal.id],
                   chainId: ZG_GALILEO_CHAIN.id,
+                  gasPrice: GALILEO_GAS_PRICE,
                 })
               }
               disabled={isConfirming}
@@ -175,6 +176,7 @@ function ProposalRow({ proposal, totalSigners, userAddress, governanceAddress, p
                   functionName: "execute",
                   args: [proposal.id],
                   chainId: ZG_GALILEO_CHAIN.id,
+                  gasPrice: GALILEO_GAS_PRICE,
                 })
               }
               disabled={isConfirming}
@@ -391,6 +393,7 @@ function CreateProposalForm({
         `Add policy: ${name}`,
       ],
       chainId: ZG_GALILEO_CHAIN.id,
+      gasPrice: GALILEO_GAS_PRICE,
     });
   };
 

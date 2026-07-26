@@ -3,7 +3,7 @@ import { useAccount, useWriteContract, useWaitForTransactionReceipt, usePublicCl
 import { parseEther, formatEther, encodeFunctionData, parseUnits, type Address } from "viem";
 import { useMultisig } from "../context/MultisigContext";
 import { POLICY_REGISTRY_ABI, MULTISIG_WALLET_ABI, ERC20_ABI, EVALUATION_GATEWAY_ABI } from "../lib/abi";
-import { CONTRACTS, shortAddress, riskColor, riskLabel, decodeCheckResults } from "../lib/constants";
+import { CONTRACTS, shortAddress, riskColor, riskLabel, decodeCheckResults, GALILEO_GAS_PRICE } from "../lib/constants";
 import { CopyableAddress } from "../components/CopyableAddress";
 import { useSearchParams, Link } from "react-router-dom";
 import { encryptEvaluateRequest, getEvaluatorPublicKey, type EvaluateRequest } from "../lib/encryption";
@@ -149,6 +149,7 @@ export default function TestTransactionsPage() {
     writeContract({
       address: selectedMultisig.wallet, abi: MULTISIG_WALLET_ABI,
       functionName: "submitTransaction", args: [CONTRACTS.testToken, transferData, nonce], value: 0n,
+      gasPrice: GALILEO_GAS_PRICE,
     });
   };
 
@@ -171,6 +172,7 @@ export default function TestTransactionsPage() {
       writeGateway({
         address: CONTRACTS.evaluationGateway, abi: EVALUATION_GATEWAY_ABI,
         functionName: "sendEvaluate", args: [encryptedMessage], value: 0n,
+        gasPrice: GALILEO_GAS_PRICE,
       });
     } catch (err) {
       console.error("Evaluation failed:", err);
@@ -189,12 +191,13 @@ export default function TestTransactionsPage() {
     writeContract({
       address: selectedMultisig.wallet, abi: MULTISIG_WALLET_ABI,
       functionName: "submitTransaction", args: [CONTRACTS.testToken, transferData, nonce], value: 0n,
+      gasPrice: GALILEO_GAS_PRICE,
     });
   };
 
   const handleMintToMultisig = () => {
     if (!selectedMultisig) return;
-    writeContract({ address: CONTRACTS.testToken, abi: ERC20_ABI, functionName: "mint", args: [selectedMultisig.wallet, 100000n] });
+    writeContract({ address: CONTRACTS.testToken, abi: ERC20_ABI, functionName: "mint", args: [selectedMultisig.wallet, 100000n], gasPrice: GALILEO_GAS_PRICE });
   };
 
   const handleSubmitCustom = () => {
@@ -205,17 +208,18 @@ export default function TestTransactionsPage() {
       functionName: "submitTransaction",
       args: [customTarget as `0x${string}`, customData as `0x${string}`, nonce],
       value: parseEther(customValue),
+      gasPrice: GALILEO_GAS_PRICE,
     });
   };
 
   const handleApproveTx = () => {
     if (!selectedMultisig || !submittedTxId) return;
-    writeContract({ address: selectedMultisig.wallet, abi: MULTISIG_WALLET_ABI, functionName: "approveTx", args: [BigInt(submittedTxId)] });
+    writeContract({ address: selectedMultisig.wallet, abi: MULTISIG_WALLET_ABI, functionName: "approveTx", args: [BigInt(submittedTxId)], gasPrice: GALILEO_GAS_PRICE });
   };
 
   const handleExecuteTx = () => {
     if (!selectedMultisig || !submittedTxId) return;
-    writeContract({ address: selectedMultisig.wallet, abi: MULTISIG_WALLET_ABI, functionName: "executeTx", args: [BigInt(submittedTxId)] });
+    writeContract({ address: selectedMultisig.wallet, abi: MULTISIG_WALLET_ABI, functionName: "executeTx", args: [BigInt(submittedTxId)], gasPrice: GALILEO_GAS_PRICE });
   };
 
   if (!hasSelection) {

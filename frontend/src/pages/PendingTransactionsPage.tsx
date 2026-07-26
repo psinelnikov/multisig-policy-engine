@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useReadContracts, useWriteContract, useWaitForTransactionReceipt, usePublicClient, useAccount } from "wagmi";
 import { formatEther, decodeFunctionData, parseUnits, type Address } from "viem";
-import { ZG_GALILEO_CHAIN, riskColor, riskLabel, decodeCheckResults, CONTRACTS } from "../lib/constants";
+import { ZG_GALILEO_CHAIN, riskColor, riskLabel, decodeCheckResults, CONTRACTS, GALILEO_GAS_PRICE } from "../lib/constants";
 import { CopyableAddress } from "../components/CopyableAddress";
 import { MULTISIG_WALLET_ABI, ERC20_ABI } from "../lib/abi";
 import { Link } from "react-router-dom";
@@ -141,6 +141,7 @@ export default function PendingTransactionsPage() {
       abi: MULTISIG_WALLET_ABI,
       functionName: "approveTx",
       args: [BigInt(txId)],
+      gasPrice: GALILEO_GAS_PRICE,
     });
   };
 
@@ -152,6 +153,7 @@ export default function PendingTransactionsPage() {
       abi: MULTISIG_WALLET_ABI,
       functionName: "executeTx",
       args: [BigInt(txId)],
+      gasPrice: GALILEO_GAS_PRICE,
     });
   };
 

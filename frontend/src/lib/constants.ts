@@ -13,6 +13,8 @@ export const ZG_GALILEO_CHAIN = {
   },
 } as const;
 
+export const GALILEO_GAS_PRICE = 4000000000n;
+
 export const CONTRACTS = {
   walletFactory: import.meta.env.VITE_WALLET_FACTORY_ADDR as `0x${string}`,
   governanceMultisig: import.meta.env.VITE_GOVERNANCE_MULTISIG_ADDR as `0x${string}`,
