@@ -12,12 +12,12 @@ export async function fetchNativePrice(): Promise<bigint> {
   }
 
   const resp = await fetch(
-    `${COINGECKO_API_URL}/simple/price?ids=zero-g&vs_currencies=usd`,
+    `${COINGECKO_API_URL}/simple/price?ids=zero-gravity&vs_currencies=usd`,
     { signal: AbortSignal.timeout(5000) }
   );
   const data = await resp.json();
-  const priceUsd = data["zero-g"]?.usd;
-  if (!priceUsd) throw new Error("CoinGecko: no zero-g price");
+  const priceUsd = data["zero-gravity"]?.usd;
+  if (!priceUsd) throw new Error("CoinGecko: no zero-gravity price");
 
   cachedPrice = BigInt(Math.floor(priceUsd * 1e18));
   cachedTimestamp = Math.floor(Date.now() / 1000);
