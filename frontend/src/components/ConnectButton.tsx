@@ -28,16 +28,16 @@ export function ConnectButton() {
             onClick={handleSwitchNetwork}
             className="btn btn-warning btn-sm"
           >
-            Switch to Coston2
+            Switch to 0G Galileo
           </button>
         )}
         {balance && !isWrongNetwork && (
           <span className="text-xs text-[var(--text-secondary)]">
-            {Number.parseFloat(formatUnits(balance.value, balance.decimals)).toFixed(4)} C2FLR
+            {Number.parseFloat(formatUnits(balance.value, balance.decimals)).toFixed(4)} 0G
           </span>
         )}
         <a
-          href={`https://coston2-explorer.flare.network/address/${address}`}
+          href={`https://chainscan-galileo.0g.ai/address/${address}`}
           target="_blank"
           rel="noreferrer"
           className="text-sm font-mono text-[var(--text-primary)] hover:text-[var(--accent)]"

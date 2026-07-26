@@ -554,7 +554,7 @@ function DeployStep({
           </p>
           {txHash && (
             <a
-              href={`https://coston2-explorer.flare.network/tx/${txHash}`}
+              href={`https://chainscan-galileo.0g.ai/tx/${txHash}`}
               target="_blank"
               rel="noreferrer"
               className="text-sm text-[var(--accent)] hover:underline font-mono"
@@ -611,7 +611,7 @@ function DeployStep({
             <div className="text-4xl mb-4 animate-pulse">&#x26A1;</div>
             <h3 className="text-xl font-bold mb-2">Deploying...</h3>
             <p className="text-sm text-[var(--text-secondary)] mb-4">
-              Waiting for confirmation on Flare Coston2.
+              Waiting for confirmation on 0G Galileo.
             </p>
             <CopyableAddress address={txHash} short={false} />
           </>
