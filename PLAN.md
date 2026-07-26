@@ -10,10 +10,10 @@ Baseline tag: `flare-baseline-2025-07-25` (35 Solidity tests, 37 TS tests passin
 
 ## Phase 0 — Prerequisites & repo baseline
 - [x] Tag baseline `flare-baseline-2025-07-25`
-- [ ] Bump Node engines >= 22 in package.json files
-- [ ] Install 0G SDKs (@0gfoundation/0g-compute-ts-sdk, @0gfoundation/0g-ts-sdk, ethers)
-- [ ] Create CHANGELOG.md
-- [ ] De-risk 0G Compute (deferred to Phase 3 — mock if providers down)
+- [x] Bump Node engines >= 22 in package.json files
+- [x] Install 0G SDKs (@0gfoundation/0g-compute-ts-sdk, @0gfoundation/0g-ts-sdk, ethers)
+- [x] Create CHANGELOG.md
+- [x] De-risk 0G Compute (deferred to Phase 3 — mock if providers down)
 
 ## Phase 1 — Chain migration: contracts + config
 ### 1a. Foundry config
@@ -35,9 +35,9 @@ Baseline tag: `flare-baseline-2025-07-25` (35 Solidity tests, 37 TS tests passin
 ### 1c. Deploy script
 - [ ] Galileo deploy script (scripted, execution deferred — needs funded wallet)
 ### 1d. Frontend chain config
-- [ ] constants.ts: ZG_GALILEO_CHAIN
-- [ ] wagmi.ts: Galileo chain
-- [ ] abi.ts: EvaluationGateway ABI, update wallet ABI
+- [x] constants.ts: ZG_GALILEO_CHAIN
+- [x] wagmi.ts: Galileo chain
+- [x] abi.ts: EvaluationGateway ABI, update wallet ABI
 
 ## Phase 2 — Evaluator service (replace TEE)
 - [x] evaluator/ directory: index, config, decrypt, pipeline, submit
@@ -54,24 +54,24 @@ Baseline tag: `flare-baseline-2025-07-25` (35 Solidity tests, 37 TS tests passin
 - [x] oracle.ts: CoinGecko zero-g/USD (done in Phase 2)
 
 ## Phase 3 — 0G Compute AI risk check
-- [ ] app/checks/ai_analysis.ts
-- [ ] simulation.ts: add check #10
-- [ ] types.ts: AI fields
-- [ ] Fail-open if providers down
+- [x] app/checks/ai_analysis.ts
+- [x] simulation.ts: add check #10
+- [x] types.ts: AI fields
+- [x] Fail-open if providers down
 
 ## Phase 4 — 0G Storage audit receipts
-- [ ] evaluator/storage.ts
-- [ ] AuditLog storageRoot populated from upload
-- [ ] evaluator/server.ts: receipt proxy endpoint
-- [ ] AuditLogPage: fetch from storage proxy
+- [x] evaluator/storage.ts
+- [x] AuditLog storageRoot populated from upload
+- [x] evaluator/server.ts: receipt proxy endpoint
+- [x] AuditLogPage: fetch from storage proxy
 
 ## Phase 5 — Oracle replacement
-- [ ] oracle.ts: CoinGecko zero-g/USD
+- [x] oracle.ts: CoinGecko zero-g/USD
 
 ## Phase 7 — Submission artifacts
-- [ ] README rewrite
-- [ ] CHANGELOG finalize
-- [ ] .env.example update
+- [x] README rewrite
+- [x] CHANGELOG finalize
+- [x] .env.example update
 
 ## Deviations from plan
 - MultisigWallet.initialize takes 3 params (auditLog, governance, evaluatorSigner) not 2.

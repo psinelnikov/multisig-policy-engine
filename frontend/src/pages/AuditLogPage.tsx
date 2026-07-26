@@ -1,14 +1,40 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useReadContracts } from "wagmi";
 import { ZG_GALILEO_CHAIN, riskColor, riskLabel, formatTimestamp, decodeCheckResults } from "../lib/constants";
 import { AUDIT_LOG_ABI } from "../lib/abi";
 import { Link } from "react-router-dom";
 import { useMultisig } from "../context/MultisigContext";
 
+const EVALUATOR_PROXY = import.meta.env.VITE_EVALUATOR_URL || "/evaluator";
+const ZERO_HASH = "0x0000000000000000000000000000000000000000000000000000000000000000";
+
+interface ReceiptData {
+  txId: string;
+  nonce: string;
+  matchedPolicyId: string;
+  policyName: string;
+  riskScore: number;
+  requiredSigners: number;
+  totalSigners: number;
+  checkResults: number;
+  txValueUsd: string;
+  aiAnalysis: {
+    chatId: string;
+    provider: string;
+    verified: boolean;
+    riskScore: number;
+    reasoning: string;
+  } | null;
+  timestamp: string;
+}
+
 export default function AuditLogPage() {
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 20;
   const { selectedMultisig, hasSelection } = useMultisig();
+  const [receipt, setReceipt] = useState<ReceiptData | null>(null);
+  const [receiptLoading, setReceiptLoading] = useState(false);
+  const [receiptError, setReceiptError] = useState(false);
 
   // Redirect to home if no multisig selected
   if (!hasSelection) {
@@ -61,6 +87,23 @@ export default function AuditLogPage() {
   const entryList = (entries || []).map((e) => e.result as any).filter(Boolean);
 
   const selectedData = selectedEntry !== null ? entryList[selectedEntry] : null;
+
+  useEffect(() => {
+    setReceipt(null);
+    setReceiptError(false);
+    if (!selectedData) return;
+    const storageRoot = selectedData.storageRoot as string;
+    if (!storageRoot || storageRoot === ZERO_HASH) return;
+    setReceiptLoading(true);
+    fetch(`${EVALUATOR_PROXY}/receipt/${storageRoot}`)
+      .then((r) => {
+        if (!r.ok) throw new Error("not found");
+        return r.json();
+      })
+      .then((data: ReceiptData) => setReceipt(data))
+      .catch(() => setReceiptError(true))
+      .finally(() => setReceiptLoading(false));
+  }, [selectedEntry, selectedData]);
 
   return (
     <div>
@@ -196,7 +239,60 @@ export default function AuditLogPage() {
                   <dt className="text-[var(--text-secondary)]">Timestamp</dt>
                   <dd className="text-xs">{formatTimestamp(selectedData.timestamp)}</dd>
                 </div>
+                {selectedData.storageRoot && selectedData.storageRoot !== ZERO_HASH && (
+                  <div>
+                    <dt className="text-[var(--text-secondary)]">Storage Root</dt>
+                    <dd className="font-mono text-xs break-all mt-0.5">{selectedData.storageRoot}</dd>
+                  </div>
+                )}
               </dl>
+
+              {receiptLoading && (
+                <p className="text-xs text-[var(--text-secondary)] mt-3">Fetching receipt from 0G Storage...</p>
+              )}
+              {receiptError && (
+                <p className="text-xs text-[var(--text-secondary)] mt-3">Receipt unavailable (on-chain data shown)</p>
+              )}
+
+              {receipt && (
+                <div className="mt-4 pt-4 border-t border-[var(--border)]">
+                  <h4 className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-2">
+                    0G Storage Receipt
+                  </h4>
+                  <dl className="space-y-2 text-xs">
+                    <div className="flex justify-between">
+                      <dt className="text-[var(--text-secondary)]">Tx Value (USD)</dt>
+                      <dd>${Number(receipt.txValueUsd) / 1e18}</dd>
+                    </div>
+                    <div className="flex justify-between">
+                      <dt className="text-[var(--text-secondary)]">Nonce</dt>
+                      <dd className="font-mono">{receipt.nonce}</dd>
+                    </div>
+                    {receipt.aiAnalysis && (
+                      <div className="pt-2 border-t border-[var(--border)]">
+                        <dt className="text-[var(--text-secondary)] mb-1">AI Analysis</dt>
+                        <dd className="space-y-1">
+                          <div className="flex justify-between">
+                            <span className="text-[var(--text-secondary)]">Provider</span>
+                            <span className="font-mono">{receipt.aiAnalysis.provider.slice(0, 10)}...</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-[var(--text-secondary)]">Verified</span>
+                            <span style={{ color: receipt.aiAnalysis.verified ? "var(--green)" : "var(--red)" }}>
+                              {receipt.aiAnalysis.verified ? "YES" : "NO"}
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-[var(--text-secondary)]">AI Risk Score</span>
+                            <span>{receipt.aiAnalysis.riskScore}</span>
+                          </div>
+                          <p className="text-[var(--text-secondary)] italic mt-1">{receipt.aiAnalysis.reasoning}</p>
+                        </dd>
+                      </div>
+                    )}
+                  </dl>
+                </div>
+              )}
 
               <div className="mt-4 pt-4 border-t border-[var(--border)]">
                 <h4 className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-2">

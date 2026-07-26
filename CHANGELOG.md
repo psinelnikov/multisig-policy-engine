@@ -17,6 +17,12 @@
 - Standalone evaluator service (evaluator/) replacing Docker TEE container
 - EvaluationGateway contract for event-driven evaluation requests
 
+### Phase 4 — 0G Storage audit receipts
+- evaluator/storage.ts: upload full audit receipts to 0G Storage via 0G TS SDK
+- evaluator/server.ts: HTTP proxy for frontend to download receipts by root hash
+- evaluator/index.ts: uploads receipt after evaluation, passes storage root on-chain
+- AuditLogPage: fetches and displays receipt details (tx value, nonce, AI analysis) from proxy
+
 ### Removed
 - Flare TEE infrastructure (InstructionSender, TeeExtensionRegistry, TeeMachineRegistry)
 - Docker ext-proxy and extension-tee services

@@ -3,6 +3,8 @@ import { zgGalileo } from "../app/rpc.js";
 import { ZG_RPC_URL, EVALUATION_GATEWAY_ADDR, MULTISIG_WALLET_ADDR, POLL_INTERVAL_MS } from "./config.js";
 import { runEvaluation, type EvaluationResult } from "./pipeline.js";
 import { submitEvaluation } from "./submit.js";
+import { uploadReceipt } from "./storage.js";
+import { startReceiptServer } from "./server.js";
 
 const GATEWAY_ABI = parseAbi([
   "event EvaluateRequested(uint256 indexed txId, address indexed sender, bytes encryptedPayload, uint256 nonce)",
@@ -76,13 +78,23 @@ async function processEvent(log: Log) {
     `signers=${result.requiredSigners}/${result.totalSigners}, policy=${result.policyName}`
   );
 
-  // ponytail: storageRoot zero for now (Phase 4 populates from 0G Storage upload)
-  const hash = await submitEvaluation(
-    txId,
-    result,
-    "0x0000000000000000000000000000000000000000000000000000000000000000" as `0x${string}`
-  );
-  console.log(`[evaluator] Submitted on-chain: ${hash}`);
+  // Upload full receipt to 0G Storage
+  const storageRoot = await uploadReceipt({
+    txId: txId.toString(),
+    nonce: result.nonce.toString(),
+    matchedPolicyId: result.matchedPolicyId.toString(),
+    policyName: result.policyName,
+    riskScore: result.riskScore,
+    requiredSigners: result.requiredSigners,
+    totalSigners: result.totalSigners,
+    checkResults: result.checkResults,
+    txValueUsd: result.txValueUsd.toString(),
+    aiAnalysis: result.aiAnalysis,
+    timestamp: new Date().toISOString(),
+  });
+
+  const hash = await submitEvaluation(txId, result, storageRoot as `0x${string}`);
+  console.log(`[evaluator] Submitted on-chain: ${hash} (storageRoot: ${storageRoot})`);
 }
 
 async function pollLoop() {
@@ -115,3 +127,5 @@ pollLoop().catch((err) => {
   console.error("[evaluator] Fatal:", err);
   process.exit(1);
 });
+
+startReceiptServer(parseInt(process.env.EVALUATOR_PORT || "3001", 10));
